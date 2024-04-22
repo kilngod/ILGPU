@@ -1,6 +1,6 @@
 ﻿// ---------------------------------------------------------------------------------------
 //                                        ILGPU
-//                        Copyright (c) 2017-2023 ILGPU Project
+//                        Copyright (c) 2017-2024 ILGPU Project
 //                                    www.ilgpu.net
 //
 // File: Interop.cs
@@ -160,6 +160,27 @@ namespace ILGPU
         #endregion
 
         #region Float/Int Casts
+
+
+        /// <summary>
+        /// Casts the given FP8E4M3 to an byte via a reinterpret cast.
+        /// </summary>
+        /// <param name="value">The value to cast.</param>
+        /// <returns>The int value.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [InteropIntrinsic(InteropIntrinsicKind.FloatAsInt)]
+        public static byte FloatAsInt(FP8E4M3 value) =>
+            value.RawValue;
+
+        /// <summary>
+        /// Casts the given FP8E5M2 to an byte via a reinterpret cast.
+        /// </summary>
+        /// <param name="value">The value to cast.</param>
+        /// <returns>The int value.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [InteropIntrinsic(InteropIntrinsicKind.FloatAsInt)]
+        public static byte FloatAsInt(FP8E5M2 value) =>
+            value.RawValue;
 
         /// <summary>
         /// Casts the given float to an int via a reinterpret cast.
