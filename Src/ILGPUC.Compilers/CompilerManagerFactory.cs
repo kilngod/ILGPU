@@ -25,7 +25,7 @@ namespace ILGPUC.Compilers;
 /// <list type="number">
 /// <item>
 /// Each explicit <see cref="Uri"/> passed to
-/// <see cref="CreateAsync(IReadOnlyList{Uri}, bool, CancellationToken)"/> is
+/// <see cref="CreateAsync"/> is
 /// queried via <see cref="ICompilerManager.GetCapabilitiesAsync"/>; the first
 /// URI to advertise a target wins for that target.
 /// </item>
@@ -48,6 +48,7 @@ namespace ILGPUC.Compilers;
 /// <c>allowLocal</c> is set on the request.
 /// </item>
 /// </list>
+/// <c>ILGPU_ROCM_COMPILER=local</c> bypasses remote routing for HIP only.
 /// </remarks>
 public static class CompilerManagerFactory
 {
@@ -76,12 +77,8 @@ public static class CompilerManagerFactory
     private static readonly ConcurrentDictionary<string, RemoteCompilerManager>
         s_remoteManagers = new();
 
-    private static readonly Lazy<CompilerManager> s_localManager =
-        new(() => new CompilerManager());
-
-    // Per-target cache of the resolved manager for the no-explicit-URI path.
-    // Each target's probe runs at most once per process; the chosen manager
-    // is reused thereafter.
+    // Cache only non-HIP auto routes. HIP selection can change with the mode,
+    // executable path, or SDK environment within one process.
     private static readonly ConcurrentDictionary<
         CompilationTarget, Lazy<Task<ICompilerManager>>> s_resolved = new();
 
@@ -89,20 +86,56 @@ public static class CompilerManagerFactory
     /// Returns a single <see cref="ICompilerManager"/> for the given target,
     /// honouring (in order) per-target env vars, the global env var, per-target
     /// Docker default ports, and the local <see cref="CompilerManager"/> as
-    /// fallback. The result is cached per target per process.
+    /// fallback. Non-HIP auto routes are cached per target per process; HIP
+    /// routes are resolved for each call so mode and SDK path changes are seen.
     /// </summary>
     /// <param name="target">The compilation target to resolve.</param>
     /// <param name="ct">A token to cancel the probe.</param>
+    /// <param name="rocmCompilerMode">
+    /// Optional HIP mode overriding <c>ILGPU_ROCM_COMPILER</c>.
+    /// </param>
+    /// <param name="hipccPath">
+    /// Optional HIP executable path; implies local HIP selection.
+    /// </param>
     /// <returns>
     /// A manager that can serve <paramref name="target"/>, or the local manager
     /// if no remote service is reachable.
     /// </returns>
     public static Task<ICompilerManager> ResolveAsync(
         CompilationTarget target,
-        CancellationToken ct = default)
-        => s_resolved.GetOrAdd(target, t =>
+        CancellationToken ct = default,
+        RocmCompilerMode? rocmCompilerMode = null,
+        string? hipccPath = null)
+    {
+        if (target == CompilationTarget.Hip)
+        {
+            if (GetEffectiveMode(rocmCompilerMode, hipccPath) ==
+                RocmCompilerMode.Local)
+            {
+                return Task.FromResult<ICompilerManager>(
+                    GetLocalManager(hipccPath, requiredHip: true));
+            }
+            return ResolveSingleAsync(target, ct);
+        }
+        return s_resolved.GetOrAdd(target, t =>
             new Lazy<Task<ICompilerManager>>(() =>
                 ResolveSingleAsync(t, ct))).Value;
+    }
+
+    /// <summary>
+    /// Parses a CLI or environment value for HIP compiler selection.
+    /// </summary>
+    /// <param name="value">The value to parse.</param>
+    /// <returns>The selected mode.</returns>
+    public static RocmCompilerMode ParseRocmCompilerMode(string value) =>
+        value.Trim().ToLowerInvariant() switch
+        {
+            "auto" => RocmCompilerMode.Auto,
+            "local" => RocmCompilerMode.Local,
+            _ => throw new ArgumentException(
+                $"Invalid ROCm compiler mode '{value}'; expected auto or local.",
+                nameof(value)),
+        };
 
     /// <summary>
     /// Builds a <see cref="CompositeCompilerManager"/> by walking the full
@@ -119,6 +152,12 @@ public static class CompilerManagerFactory
     /// fills any target not covered by a remote service.
     /// </param>
     /// <param name="ct">A token to cancel the probes.</param>
+    /// <param name="rocmCompilerMode">
+    /// Optional HIP mode overriding <c>ILGPU_ROCM_COMPILER</c>.
+    /// </param>
+    /// <param name="hipccPath">
+    /// Optional HIP executable path; implies local HIP selection.
+    /// </param>
     /// <returns>
     /// A composite manager mapping each resolvable
     /// <see cref="CompilationTarget"/> to a concrete inner manager. Targets
@@ -128,17 +167,42 @@ public static class CompilerManagerFactory
     public static async Task<CompositeCompilerManager> CreateAsync(
         IReadOnlyList<Uri>? explicitUris = null,
         bool allowLocal = true,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        RocmCompilerMode? rocmCompilerMode = null,
+        string? hipccPath = null)
+        => await CreateCoreAsync(
+            explicitUris, allowLocal, ct, rocmCompilerMode, hipccPath,
+            GetOrCreateRemote, GetLocalManager,
+            Environment.GetEnvironmentVariable).ConfigureAwait(false);
+
+    internal static async Task<CompositeCompilerManager> CreateCoreAsync(
+        IReadOnlyList<Uri>? explicitUris,
+        bool allowLocal,
+        CancellationToken ct,
+        RocmCompilerMode? rocmCompilerMode,
+        string? hipccPath,
+        Func<string, RemoteCompilerManager> getRemote,
+        Func<string?, bool, CompilerManager> getLocal,
+        Func<string, string?> getEnvironment)
     {
         var routes = new Dictionary<CompilationTarget, ICompilerManager>();
         var allTargets = Enum.GetValues<CompilationTarget>();
+        var mode = GetEffectiveMode(rocmCompilerMode, hipccPath,
+            getEnvironment);
+        CompilerManager? local = null;
+
+        // An explicit local HIP selection takes precedence over every remote
+        // source, including --compiler-service and trusted environment URLs.
+        if (mode == RocmCompilerMode.Local)
+            routes[CompilationTarget.Hip] =
+                local = getLocal(hipccPath, true);
 
         // 1. Explicit URIs — probe each, first to advertise a target wins.
         if (explicitUris is not null)
         {
             foreach (var uri in explicitUris)
             {
-                var remote = GetOrCreateRemote(uri.ToString());
+                var remote = getRemote(uri.ToString());
                 var caps = await ProbeCapabilitiesAsync(remote, ct).ConfigureAwait(false);
                 if (caps is null)
                     continue;
@@ -158,17 +222,17 @@ public static class CompilerManagerFactory
                 continue;
             if (s_envVarNames.TryGetValue(target, out var envName))
             {
-                var url = Environment.GetEnvironmentVariable(envName);
+                var url = getEnvironment(envName);
                 if (!string.IsNullOrEmpty(url))
-                    routes[target] = GetOrCreateRemote(url);
+                    routes[target] = getRemote(url);
             }
         }
 
         // 3. Global env var — trusted, no probe; covers any unrouted target.
-        var globalUrl = Environment.GetEnvironmentVariable("ILGPU_COMPILER_SERVICE_URL");
+        var globalUrl = getEnvironment("ILGPU_COMPILER_SERVICE_URL");
         if (!string.IsNullOrEmpty(globalUrl))
         {
-            var remote = GetOrCreateRemote(globalUrl);
+            var remote = getRemote(globalUrl);
             foreach (var target in allTargets)
                 routes.TryAdd(target, remote);
         }
@@ -181,7 +245,7 @@ public static class CompilerManagerFactory
             var defaultUrl = GetDefaultDockerUrl(target);
             if (defaultUrl is null)
                 continue;
-            var remote = GetOrCreateRemote(defaultUrl);
+            var remote = getRemote(defaultUrl);
             if (await IsRemoteUsableAsync(remote, target, ct).ConfigureAwait(false))
                 routes[target] = remote;
         }
@@ -189,7 +253,7 @@ public static class CompilerManagerFactory
         // 5. Local fallback.
         if (allowLocal)
         {
-            var local = s_localManager.Value;
+            local ??= getLocal(hipccPath, false);
             foreach (var target in allTargets)
                 routes.TryAdd(target, local);
         }
@@ -206,9 +270,43 @@ public static class CompilerManagerFactory
         s_remoteManagers.GetOrAdd(url, u => new RemoteCompilerManager(new Uri(u)));
 
     /// <summary>
-    /// Returns the local <see cref="CompilerManager"/> singleton.
+    /// Returns a local <see cref="CompilerManager"/> with the discovered HIP tool.
     /// </summary>
-    public static CompilerManager GetLocalManager() => s_localManager.Value;
+    public static CompilerManager GetLocalManager(
+        string? hipccPath = null,
+        bool requiredHip = false) =>
+        new(new CompilerOptions
+        {
+            HipccPath = HipccDiscovery.Discover(hipccPath, requiredHip),
+        });
+
+    private static RocmCompilerMode GetEffectiveMode(
+        RocmCompilerMode? explicitMode,
+        string? hipccPath,
+        Func<string, string?>? getEnvironment = null)
+    {
+        if (hipccPath is not null)
+        {
+            if (explicitMode == RocmCompilerMode.Auto)
+                throw new ArgumentException(
+                    "--hipcc-path conflicts with --rocm-compiler auto.");
+            return RocmCompilerMode.Local;
+        }
+        return GetRocmCompilerMode(explicitMode, getEnvironment);
+    }
+
+    private static RocmCompilerMode GetRocmCompilerMode(
+        RocmCompilerMode? explicitMode,
+        Func<string, string?>? getEnvironment = null)
+    {
+        if (explicitMode.HasValue)
+            return explicitMode.Value;
+        var value = (getEnvironment ?? Environment.GetEnvironmentVariable)(
+            "ILGPU_ROCM_COMPILER");
+        return string.IsNullOrWhiteSpace(value)
+            ? RocmCompilerMode.Auto
+            : ParseRocmCompilerMode(value);
+    }
 
     private static async Task<ICompilerManager> ResolveSingleAsync(
         CompilationTarget target,
@@ -237,7 +335,7 @@ public static class CompilerManagerFactory
         }
 
         // 4. Local CompilerManager.
-        return s_localManager.Value;
+        return GetLocalManager();
     }
 
     private static string? GetDefaultDockerUrl(CompilationTarget target) => target switch

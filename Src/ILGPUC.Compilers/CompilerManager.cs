@@ -29,6 +29,12 @@ public sealed class CompilerManager(IEnumerable<ICompiler> compilers) : ICompile
         compilers.ToDictionary(c => c.Target);
 
     /// <summary>
+    /// Gets the HIP compiler path selected for this local manager, if one was
+    /// supplied through <see cref="CompilerOptions"/>.
+    /// </summary>
+    public string? HipccPath { get; }
+
+    /// <summary>
     /// Initializes a new <see cref="CompilerManager"/> with default compiler paths.
     /// </summary>
     public CompilerManager()
@@ -49,7 +55,9 @@ public sealed class CompilerManager(IEnumerable<ICompiler> compilers) : ICompile
             new OclocCompiler(options.OclocPath),
             new ClangOpenCLCompiler(options.ClangPath),
         ])
-    { }
+    {
+        HipccPath = options.HipccPath;
+    }
 
 
     /// <summary>

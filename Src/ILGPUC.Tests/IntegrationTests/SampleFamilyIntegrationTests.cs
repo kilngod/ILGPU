@@ -57,6 +57,7 @@ public sealed class SampleFamilyIntegrationTests
     [SkippableTheory]
     [InlineData(BackendType.CPU)]
     [InlineData(BackendType.Metal)]
+    [InlineData(BackendType.ROCm)]
     public async Task Build_AdvancedViews_PinsFamilyA1(BackendType backend)
     {
         await RequireBackendAsync(backend);
@@ -91,6 +92,7 @@ public sealed class SampleFamilyIntegrationTests
     [SkippableTheory]
     [InlineData(BackendType.CPU)]
     [InlineData(BackendType.Metal)]
+    [InlineData(BackendType.ROCm)]
     public async Task Build_GenericKernel_PinsFamilyA2(BackendType backend)
     {
         await RequireBackendAsync(backend);
@@ -122,16 +124,18 @@ public sealed class SampleFamilyIntegrationTests
     /// the three emitter defects fixed on <c>temp5</c> (self-loop
     /// classification, FloatAsIntCast/IntAsFloatCast dispatch arms,
     /// element-type-aware pointer-cast emission).
-    /// CPU only — Metal lacks Float64 atomics; OpenCL Float64 atomics need
+    /// Metal lacks Float64 atomics; OpenCL Float64 atomics need
     /// <c>cl_khr_int64_base_atomics</c> (pre-existing limitation).
     /// </summary>
-    [SkippableFact]
-    public async Task Build_AtomicsFloat64_PinsFamilyB1()
+    [SkippableTheory]
+    [InlineData(BackendType.CPU)]
+    [InlineData(BackendType.ROCm)]
+    public async Task Build_AtomicsFloat64_PinsFamilyB1(BackendType backend)
     {
-        await RequireBackendAsync(BackendType.CPU);
+        await RequireBackendAsync(backend);
 
         using var project = new IntegrationProjectFixture(
-            "AtomicsFloat64", BackendType.CPU, _output);
+            "AtomicsFloat64", backend, _output);
         try
         {
             var build = await project.BuildAsync();
@@ -156,17 +160,19 @@ public sealed class SampleFamilyIntegrationTests
     /// <c>Group.GetSharedMemory2D</c> + <see cref="Group.Barrier"/> through
     /// the full MSBuild round-trip. Build-only assertion: the CPU backend
     /// cannot honour <see cref="Group.Barrier"/> semantics under its
-    /// per-thread serial launcher, so the binary's stdout is intentionally
-    /// not verified — the regression target is source-emission and the
-    /// launcher signature, both validated at build time.
+    /// per-thread serial launcher. The regression target is source emission
+    /// and the launcher signature, both validated at build time.
     /// </summary>
-    [SkippableFact]
-    public async Task Build_MatrixMultiplyTiled_PinsTiledShape()
+    [SkippableTheory]
+    [InlineData(BackendType.CPU)]
+    [InlineData(BackendType.ROCm)]
+    public async Task Build_MatrixMultiplyTiled_PinsTiledShape(
+        BackendType backend)
     {
-        await RequireBackendAsync(BackendType.CPU);
+        await RequireBackendAsync(backend);
 
         using var project = new IntegrationProjectFixture(
-            "MatrixMultiplyTiled", BackendType.CPU, _output);
+            "MatrixMultiplyTiled", backend, _output);
         try
         {
             var build = await project.BuildAsync();

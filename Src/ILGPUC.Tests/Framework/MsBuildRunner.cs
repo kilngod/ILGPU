@@ -161,7 +161,9 @@ static class MsBuildRunner
         if (properties is null)
             return;
         foreach (var kvp in properties)
-            args.Add($"-p:{kvp.Key}={kvp.Value}");
+            args.Add(kvp.Value.Contains(' ')
+                ? $"-p:{kvp.Key}=\"{kvp.Value}\""
+                : $"-p:{kvp.Key}={kvp.Value}");
     }
 
     private static async Task<MsBuildResult> RunDotnetAsync(

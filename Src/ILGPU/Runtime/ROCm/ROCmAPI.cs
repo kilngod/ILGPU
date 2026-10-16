@@ -10,8 +10,13 @@
 // ---------------------------------------------------------------------------------------
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace ILGPU.Runtime.ROCm;
 
@@ -121,6 +126,90 @@ public enum HipDeviceAttributeKind
 /// </remarks>
 unsafe partial class ROCmAPI
 {
+    private static ROCmAPI InitializeROCmRuntime(Func<ROCmAPI> loadRuntime)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            NativeLibrary.SetDllImportResolver(
+                typeof(ROCmAPI).Assembly,
+                ResolveWindowsHipLibrary);
+        }
+
+        return loadRuntime();
+    }
+
+    private static IntPtr ResolveWindowsHipLibrary(
+        string libraryName,
+        Assembly assembly,
+        DllImportSearchPath? searchPath)
+    {
+        if (!libraryName.Equals(
+            LibNameWindows,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            return IntPtr.Zero;
+        }
+
+        foreach (var directory in GetWindowsHipDirectories())
+        {
+            var libraryPath = Path.Combine(directory, LibNameWindows + ".dll");
+            if (NativeLibrary.TryLoad(libraryPath, out var handle))
+                return handle;
+        }
+
+        // Let the normal Windows loader search application and system paths.
+        return IntPtr.Zero;
+    }
+
+    private static IEnumerable<string> GetWindowsHipDirectories()
+    {
+        var hipccPath = Environment.GetEnvironmentVariable("ILGPU_HIPCC_PATH");
+        if (!string.IsNullOrWhiteSpace(hipccPath))
+        {
+            var compilerDirectory = Path.GetDirectoryName(hipccPath.Trim('"'));
+            if (!string.IsNullOrEmpty(compilerDirectory))
+                yield return compilerDirectory;
+        }
+
+        foreach (var variable in new[] { "HIP_PATH", "ROCM_PATH" })
+        {
+            var root = Environment.GetEnvironmentVariable(variable);
+            if (!string.IsNullOrWhiteSpace(root))
+                yield return Path.Combine(root.Trim('"'), "bin");
+        }
+
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (!string.IsNullOrEmpty(path))
+        {
+            foreach (var directory in path.Split(Path.PathSeparator))
+            {
+                if (!string.IsNullOrWhiteSpace(directory))
+                    yield return directory.Trim('"');
+            }
+        }
+
+        var installedRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "AMD", "ROCm");
+        if (!Directory.Exists(installedRoot))
+            yield break;
+
+        foreach (var directory in Directory.GetDirectories(installedRoot, "7.*")
+            .Select(directory => new
+            {
+                Directory = directory,
+                Version = Version.TryParse(
+                    Path.GetFileName(directory), out var version)
+                    ? version
+                    : null,
+            })
+            .Where(entry => entry.Version?.Major == 7)
+            .OrderByDescending(entry => entry.Version))
+        {
+            yield return Path.Combine(directory.Directory, "bin");
+        }
+    }
+
     #region Initialization
 
     /// <summary>
@@ -424,7 +513,7 @@ unsafe partial class ROCmAPI
     public ROCmError GetDeviceArchitecture(out string architecture, int device)
     {
         // hipDeviceProp_tR0600: 1472 bytes, gcnArchName (char[256]) at offset
-        // 1160 on all 64-bit platforms (unchanged since ROCm 6.0).
+        // 1160. Validated against the Windows HIP SDK 7.2 header.
         const int propertiesSize = 1472;
         const int gcnArchNameOffset = 1160;
         var buffer = stackalloc byte[propertiesSize];

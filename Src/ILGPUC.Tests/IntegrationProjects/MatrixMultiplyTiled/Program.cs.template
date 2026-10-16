@@ -65,7 +65,7 @@ static class Program
         const int N = 4;
 
         using var context = Context.Create(b => b.Default());
-        using var accelerator = context.GetPreferredDevice(preferCPU: $(PREFER_CPU))
+        using var accelerator = context.$(DEVICE_SELECTION)
             .CreateAccelerator(context);
         var stream = accelerator.DefaultStream;
 

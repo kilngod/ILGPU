@@ -41,6 +41,13 @@
          ILGPU_*_SERVICE_URL environment variables — explicit URLs win. -->
     <ILGPUCompilerServices Condition="'$(ILGPUCompilerServices)' == ''"></ILGPUCompilerServices>
 
+    <!-- User-configurable: HIP compiler routing for binary builds.
+         Set to "local" with ILGPUCompile=true to use a HIP 7.x SDK on this
+         machine, even when a ROCm compiler service is configured or found.
+         Leave empty to honor ILGPU_ROCM_COMPILER and the normal auto route.
+         "auto" explicitly overrides ILGPU_ROCM_COMPILER. -->
+    <ILGPURocmCompiler Condition="'$(ILGPURocmCompiler)' == ''"></ILGPURocmCompiler>
+
     <!-- Tool path. When unset (default), auto-resolve against the package's
          tools/ layout below. Override for local dev builds, e.g.:
            <ILGPUCompilerTool>dotnet "$(ILGPU_REPO)/Bin/Debug/net10.0/ILGPUC.dll" </ILGPUCompilerTool>
@@ -112,16 +119,22 @@
     <ItemGroup>
       <_ILGPURspLines Include="build" />
       <_ILGPURspLines Include="--compile-items" />
-      <_ILGPURspLines Include="%(Compile.FullPath)" />
+      <_ILGPURspLines Include="&quot;%(Compile.FullPath)&quot;" />
       <_ILGPURspLines Include="--references" />
-      <_ILGPURspLines Include="%(ReferencePath.FullPath)" />
+      <!-- Response files split unquoted paths at spaces. Framework references
+           normally live under Program Files on Windows. -->
+      <_ILGPURspLines Include="&quot;%(ReferencePath.FullPath)&quot;" />
       <_ILGPURspLines Include="--output-dir" />
-      <_ILGPURspLines Include="$(ILGPUOutputDir)" />
+      <_ILGPURspLines Include="&quot;$(ILGPUOutputDir)&quot;" />
       <_ILGPURspLines Include="--project-dir" />
-      <_ILGPURspLines Include="$(MSBuildProjectDirectory)" />
+      <_ILGPURspLines Include="&quot;$(MSBuildProjectDirectory)&quot;" />
       <_ILGPURspLines Include="-b" />
       <_ILGPURspLines Include="@(_ILGPUBackendItem)" />
       <_ILGPURspLines Include="--compile" Condition="'$(ILGPUCompile)' == 'true'" />
+      <_ILGPURspLines Include="--rocm-compiler"
+                      Condition="'$(ILGPUCompile)' == 'true' And '$(ILGPURocmCompiler)' != ''" />
+      <_ILGPURspLines Include="$(ILGPURocmCompiler)"
+                      Condition="'$(ILGPUCompile)' == 'true' And '$(ILGPURocmCompiler)' != ''" />
       <!-- Emit a &quot;compiler-service&quot; flag plus each URI; the CLI accepts
            multiple URIs after a single flag thanks to AllowMultipleArgumentsPerToken. -->
       <_ILGPURspLines Include="--compiler-service"

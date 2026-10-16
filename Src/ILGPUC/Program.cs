@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------------------
 
 using ILGPU.Util;
+using ILGPUC.Compilers;
 using System;
 using System.CommandLine;
 using System.Linq;
@@ -42,6 +43,15 @@ sealed partial class Program
     }
 
     #region Helpers
+
+    /// <summary>
+    /// Converts an explicit CLI value while leaving the environment fallback
+    /// to <see cref="CompilerManagerFactory"/>.
+    /// </summary>
+    private static RocmCompilerMode? GetRocmCompilerMode(string? value) =>
+        value is null
+            ? null
+            : CompilerManagerFactory.ParseRocmCompilerMode(value);
 
     /// <summary>
     /// Resolves generic methods via packed command line arguments.

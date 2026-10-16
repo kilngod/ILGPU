@@ -24,6 +24,7 @@ using ILGPUC.Frontend.Intrinsic;
 using ILGPUC.IR;
 using ILGPUC.IR.ModuleValues.Construction;
 using ILGPUC.IR.Transformations;
+using ILGPUC.Tests.Framework;
 using ILGPUC.Tests.Kernels;
 using System;
 using System.Collections.Generic;
@@ -294,7 +295,7 @@ public sealed class CompileBenchFacts(ITestOutputHelper output)
         BackendType.Metal => new MetalBackend(
             MetalTargetOS.macOS, MetalGPUFamily.Apple7),
         BackendType.OpenCL => new OpenCLIntelBackend(2, 0),
-        BackendType.ROCm => new ROCmBackend("gfx1100"),
+        BackendType.ROCm => new ROCmBackend(RocmTestConfiguration.Architecture),
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 

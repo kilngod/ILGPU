@@ -45,6 +45,19 @@ sealed partial class Program
             DefaultValueFactory = static _ => true,
         };
 
+        readonly Option<string?> _rocmCompilerOption = new("--rocm-compiler")
+        {
+            Description =
+                "HIP compiler routing: auto or local "
+                + "(overrides ILGPU_ROCM_COMPILER)",
+        };
+
+        readonly Option<string?> _hipccPathOption = new("--hipcc-path")
+        {
+            Description =
+                "Path to a HIP 7.x hipcc executable (selects local HIP)",
+        };
+
         public ProbeServicesCommand(RootCommand rootCommand)
         {
             var command = new Command(
@@ -58,6 +71,8 @@ sealed partial class Program
             {
                 _compilerServiceOption,
                 _allowLocalOption,
+                _rocmCompilerOption,
+                _hipccPathOption,
             };
 
             command.SetAction(Execute);
@@ -76,7 +91,12 @@ sealed partial class Program
             var manager = await CompilerManagerFactory.CreateAsync(
                 serviceUrls,
                 allowLocal,
-                ct).ConfigureAwait(false);
+                ct,
+                rocmCompilerMode:
+                    GetRocmCompilerMode(parseResult.GetValue(
+                        _rocmCompilerOption)),
+                hipccPath: parseResult.GetValue(_hipccPathOption))
+                .ConfigureAwait(false);
 
             await Console.Out.WriteLineAsync(
                 $"ILGPUC compiler-service routing "
@@ -106,7 +126,12 @@ sealed partial class Program
                 var version = caps.Compilers
                     .FirstOrDefault(c => c.Target == target)
                     ?.Version;
-                var versionSuffix = version is null ? "" : $" [{version}]";
+                var versionSuffix =
+                    target == CompilationTarget.Hip &&
+                    inner is CompilerManager local
+                        ? $" [hipcc: {local.HipccPath}; " +
+                            $"SDK version: {version ?? "unavailable"}]"
+                        : version is null ? "" : $" [{version}]";
 
                 await Console.Out.WriteLineAsync(
                     $"  {target,-12} -> {label} ({status}){versionSuffix}");

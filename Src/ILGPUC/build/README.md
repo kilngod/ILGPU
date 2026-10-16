@@ -81,6 +81,9 @@ All properties are optional. Set them in a `<PropertyGroup>` in your `.csproj`:
 | `ILGPUBackend` | `CPU` | Target backend(s). Examples: `CPU`, `Metal`, `Cuda`, `CPU Metal` |
 | `ILGPUBackendOptions` | *(empty)* | Extra backend flags passed to `ilgpuc`. Example: `--simd-width 16` |
 | `ILGPUCompilationOptions` | *(empty)* | Compilation flags passed to `ilgpuc`. Example: `-opt O2` |
+| `ILGPUCompile` | `false` | Invoke the native compiler and embed a binary when `true`. |
+| `ILGPUCompilerServices` | *(empty)* | Semicolon-delimited remote compiler service URLs. |
+| `ILGPURocmCompiler` | *(empty)* | Set to `local` to route HIP to the local HIP 7.x SDK; `auto` explicitly selects normal routing. Empty honors `ILGPU_ROCM_COMPILER`. Used when `ILGPUCompile=true`. |
 | `ILGPUCompilerTool` | `ilgpuc` | Path to the ILGPUC tool. Override for local dev builds. |
 | `ILGPUOutputDir` | `$(IntermediateOutputPath)ilgpu/` | Where to write rewritten + generated files |
 
@@ -102,6 +105,71 @@ All properties are optional. Set them in a `<PropertyGroup>` in your `.csproj`:
 ```
 
 This generates separate `CompiledKernel` classes and registrars for each backend.
+
+### Windows: compile ROCm kernels with the local HIP SDK
+
+Install a HIP **7.x** SDK and a supported AMD GPU/driver. Use a C++ toolset
+compatible with that SDK. On the validated machine, HIP 7.2 compiled with
+MSVC v143 14.44; the Visual Studio 2026 default 14.51 headers caused
+HIP header conflicts. Determine the GPU's `gfx` architecture from the HIP
+runtime rather than copying the value below.
+
+From the repository root, first check which compiler ILGPUC selects:
+
+```powershell
+dotnet .\Bin\Debug\net10.0\ILGPUC.dll probe-services --rocm-compiler local
+```
+
+The `Hip` line should say `local (available)` and include the selected
+`hipcc.exe` path and HIP version. For a custom SDK installation, add
+`--hipcc-path "C:\path\to\hipcc.exe"` to this command. That option implies
+local HIP selection; it conflicts with `--rocm-compiler auto`. The same
+options are available on `ilgpuc compile` and `ilgpuc build`. Without a
+CLI path, discovery checks `ILGPU_HIPCC_PATH`, `HIP_PATH`, `ROCM_PATH`,
+`PATH`, then installed `C:\Program Files\AMD\ROCm\7.*` SDKs in numeric
+version order. A missing tool or a non-7.x explicit tool produces a
+diagnostic listing the paths tried.
+
+For an MSBuild consumer, set these properties:
+
+```xml
+<PropertyGroup>
+  <ILGPUBackend>ROCm</ILGPUBackend>
+  <ILGPUBackendOptions>--rocm-arch gfx1201</ILGPUBackendOptions>
+  <ILGPUCompile>true</ILGPUCompile>
+  <ILGPURocmCompiler>local</ILGPURocmCompiler>
+</PropertyGroup>
+```
+
+The example's `gfx1201` is specific to the Radeon RX 9070 XT. Replace it
+for other GPUs. `ILGPUCompile=true` asks ILGPUC to embed a native code
+object. `ILGPURocmCompiler=local` routes HIP to this machine even when a
+compiler service is configured. For a custom compiler path in MSBuild,
+set `ILGPU_HIPCC_PATH` in the build environment before launching the build.
+The CLI `--hipcc-path` option is available for direct `compile`/`build`
+invocations. A Windows runtime process also needs access to the matching
+`amdhip64_7.dll`; ILGPU searches `ILGPU_HIPCC_PATH`, `HIP_PATH`,
+`ROCM_PATH`, `PATH`, and installed 7.x SDK directories.
+
+**Validated on Windows:** HIP SDK 7.2.60201 with a Radeon RX 9070 XT
+(`gfx1201`) and the MSVC v143 14.44 toolset. `SimpleKernel` compiled to a
+code object, ran on that GPU, and checked 1,024 results. The Windows
+`ILGPUC.Tests` suite passed 6,110 tests with 0 failures; 1,107 ROCm-named
+cases passed with no ROCm skips. The 1,047 skips were for unavailable CUDA,
+Metal, and OpenCL backends. Other HIP 7.x minor releases and GPUs have not
+been validated. Linux host validation is tracked separately.
+
+### Remote compiler service and Docker route
+
+The existing remote service route remains available. Set
+`ILGPUCompilerServices` to one or more service URLs and leave
+`ILGPURocmCompiler` empty or set it to `auto`. ILGPUC probes explicit
+service URLs first, then configured environment URLs, then the localhost
+Docker default, before falling back to a local compiler. A remote service
+can compile on another host, including Linux; the machine executing the
+kernel still needs a compatible AMD runtime and GPU. See
+`Src/docker/` for the container setup and `probe-services` for the route
+selected by the current environment.
 
 ### Example: Local development setup
 
@@ -134,4 +202,15 @@ Use `ilgpuc build --help` for all available options.
 - **No kernels found**: If your source files have no `stream.Launch()` calls marked with `[ReplaceWithLauncher]`, the tool writes an empty manifest and exits cleanly. No files are swapped.
 - **Build errors in rewritten code**: Check `obj/.../ilgpu/rewritten/` to see the rewritten source. The `#line` directives map errors back to original source locations.
 - **Response file contents**: Inspect `obj/.../ilgpu/args.rsp` to see exactly what arguments are passed to `ilgpuc`.
+- **Temporary-file permission errors**: From the repository root, run
+  `& .\Src\scripts\Use-WorkspaceTemp.ps1` in the PowerShell session used
+  for the build. It creates the Git-ignored `codex/temp` folder and sets
+  process-local `TEMP` and `TMP`; this is useful in restricted development
+  environments where HIP COMGR cannot write to the default temp directory.
+  HIP compilation checks that it can create and rename a file before
+  invoking `hipcc`. If the system temp directory denies renaming, the
+  compiler uses a private temporary directory under the current working
+  directory or executable directory and points HIP/COMGR there. The directory
+  is removed after compilation. If all locations fail, the error lists the
+  attempted locations and compiler path.
 - **Incremental builds**: The `ILGPUKernelCompile` target uses `Inputs="@(Compile)" Outputs="$(ILGPUManifest)"` for incremental build support. If source files haven't changed, the tool is skipped.

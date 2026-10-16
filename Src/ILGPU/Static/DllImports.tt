@@ -66,12 +66,15 @@ namespace <#= imports.Namespace #>
         /// Returns the driver API for the current platform.
         /// </summary>
         public static <#= className #> CurrentAPI { get; } =
+<#      if (className == "ROCmAPI") { #>
+            InitializeROCmRuntime(() =>
+<#      } #>
             LoadRuntimeAPI<
             <#= className #>,
 <#      foreach (var (id, _) in platformMapping) { #>
             <#= className #>_<#= id #>,
 <#      } #>
-            <#= className #>_NotSupported>();
+            <#= className #>_NotSupported>()<#= className == "ROCmAPI" ? ")" : "" #>;
 
         #endregion
     }

@@ -33,8 +33,8 @@ namespace ILGPUC.Tests.IntegrationTests;
 /// test layers (IRTests/, BackendTests/, ExecutionTests/) never exercise.
 ///
 /// Backend coverage: CPU runs everywhere; Metal is gated by both the
-/// compiler and runtime availability checks (so it runs on macOS dev
-/// machines and skips on Linux CI).
+/// compiler and runtime availability checks (so it runs only on hosts with
+/// the matching toolchain and GPU).
 /// </summary>
 public sealed class MsBuildIntegrationTests
 {
@@ -63,6 +63,7 @@ public sealed class MsBuildIntegrationTests
     [SkippableTheory]
     [InlineData(BackendType.CPU)]
     [InlineData(BackendType.Metal)]
+    [InlineData(BackendType.ROCm)]
     public async Task Build_HelloKernel_ProducesArtifactsAndRuns(BackendType backend)
     {
         await RequireBackendAsync(backend);
@@ -162,6 +163,7 @@ public sealed class MsBuildIntegrationTests
     [SkippableTheory]
     [InlineData(BackendType.CPU)]
     [InlineData(BackendType.Metal)]
+    [InlineData(BackendType.ROCm)]
     public async Task Build_MultiKernel_GeneratesAllKernelsAndRuns(
         BackendType backend)
     {
@@ -212,9 +214,9 @@ public sealed class MsBuildIntegrationTests
     // override propagates to args.rsp and is reflected in the registrar.
     //
     // This test deliberately stops at artifact verification (no run step).
-    // The PREFER_CPU substitution in the .cs template is fixed at fixture-
-    // construction time, so a runtime backend that differs from the source's
-    // hard-coded preferCPU value would mismatch the accelerator. The point of
+    // The DEVICE_SELECTION substitution in the .cs template is fixed at
+    // fixture construction time, so a runtime backend that differs from the
+    // source's selected device would mismatch the accelerator. The point of
     // the test is to prove the property override path through the .targets
     // file, not the runtime — that's covered by tests 1 and 3.
     // -----------------------------------------------------------------------
@@ -222,6 +224,7 @@ public sealed class MsBuildIntegrationTests
     [SkippableTheory]
     [InlineData(BackendType.CPU)]
     [InlineData(BackendType.Metal)]
+    [InlineData(BackendType.ROCm)]
     public async Task Build_BackendPropertyOverride_HonoredInArgsRspAndRegistrar(
         BackendType backend)
     {

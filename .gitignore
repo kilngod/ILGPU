@@ -7,6 +7,9 @@
 *.userosscache
 *.sln.docstates
 
+# Keep Codex workspace instructions and metadata out of the repository/solution.
+/codex/
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 

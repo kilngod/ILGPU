@@ -2,13 +2,19 @@
 
 ## Overview
 
-The ILGPUC test suite verifies the AOT compiler across three layers, from IR correctness
-through backend code generation to end-to-end execution. Each layer catches different
-classes of bugs:
+The ILGPUC test suite verifies the AOT compiler from IR correctness through
+backend code generation to end-to-end execution. Its test categories cover:
 
 1. **IR Snapshot Tests** — verify the compiler's internal representation at key pipeline stages
 2. **Backend Code Generation Tests** — verify every kernel produces valid source on every backend
 3. **Execution Tests** — build and run standalone programs through the full ILGPUC pipeline, verify stdout
+4. **MSBuild Integration Tests** — build standalone projects through `ILGPU.Kernels.targets` and run selected outputs
+5. **Non-Kernel Tests** — verify compiler helpers and diagnostics
+
+`ILGPUC.CompilerService.Tests` is a separate project for compiler service
+protocol and routing checks, including local HIP SDK discovery. The opt-in
+`CompileBenchFacts` benchmark is reported separately; the
+`CompilePerfRegressionTests` facts remain in the ordinary unit test suite.
 
 All tests use xUnit and live in `ILGPUC.Tests/`.
 
@@ -337,6 +343,91 @@ dotnet test --filter CpuBackendTests
 # Update IR snapshots
 ILGPU_UPDATE_IR=1 dotnet test --filter IRTests
 ```
+
+### ROCm tests on a machine with an AMD GPU
+
+`ROCmBackendTests.SourceGeneration` needs no HIP SDK or GPU. Native
+compilation requires a reachable local or remote HIP compiler. The
+`ROCm_*ExecutionTests` additionally require a local AMD GPU and runtime.
+Set `ILGPU_ROCM_ARCH` to override the target architecture. Without it, the
+test framework uses the first local ROCm device's architecture, falling back
+to `gfx1100` only when no runtime device can be enumerated. ROCm execution
+and MSBuild integration tests select a ROCm device explicitly, even if other
+GPU backends are present. The MSBuild integration tests compile ROCm binaries
+for the same architecture.
+
+On Windows, use a developer shell with a C++ toolset compatible with the
+installed HIP SDK. The validated HIP 7.2 setup used MSVC v143 14.44.
+From the repository root in PowerShell:
+
+```powershell
+& .\Src\scripts\Use-WorkspaceTemp.ps1
+$env:ILGPU_ROCM_COMPILER = 'local'
+$env:ILGPU_ROCM_ARCH = 'gfx1201' # replace with this GPU's architecture
+# Optional for a non-default SDK installation:
+# $env:ILGPU_HIPCC_PATH = 'C:\path\to\hipcc.exe'
+dotnet .\Bin\Debug\net10.0\ILGPUC.dll probe-services --rocm-compiler local
+dotnet test .\Src\ILGPUC.Tests\ILGPUC.Tests.csproj -p:Configuration=Debug `
+  --filter 'FullyQualifiedName~ROCm_BasicMovementExecutionTests.Copy_ProducesCorrectOutput'
+```
+
+The script creates `codex/temp` and sets `TEMP`/`TMP` for this PowerShell
+process only. `/codex/` is ignored by Git. It avoids temporary-file
+permission errors observed when COMGR ran inside a restricted development
+sandbox; ordinary writable system temp directories also work. The local HIP
+compiler checks whether its temp directory permits file creation and rename.
+If the system temp fails, it tries a private directory under the process's
+working directory and then its executable directory, and passes the selected
+path to HIP/COMGR. Start with
+one execution test, then expand the filter to `FullyQualifiedName~ROCm_`
+and `FullyQualifiedName~ROCmBackendTests` after reviewing failures.
+
+On Linux, set `ILGPU_ROCM_ARCH` to that box's architecture, set
+`ILGPU_ROCM_COMPILER=local` to select `/opt/rocm/bin/hipcc` or another
+discovered HIP 7.x compiler, and run the same filtered `dotnet test`
+command. A remote or Docker compiler can be selected with `auto`, but
+execution tests still need a local ROCm device.
+
+### Run and debug ROCm tests in Rider on Windows
+
+Generate a local test settings file from the installed HIP SDK and MSVC
+toolset. The file is saved under the Git-ignored `codex/` directory:
+
+```powershell
+.\Src\scripts\New-RocmRiderRunSettings.ps1 -Architecture gfx1201
+```
+
+For a different GPU, pass its `gfx` architecture. Use `-HipccPath`,
+`-VcvarsPath`, or `-MSVCToolsetVersion` when the installed paths or compatible
+toolset differ. Regenerate the file after updating HIP, Visual Studio, or
+the Windows `PATH`; it contains a snapshot of the developer environment.
+The generated settings supply `ILGPU_ROCM_COMPILER=local`, the HIP compiler
+path, architecture, compatible MSVC include/library paths, and writable
+`TEMP`/`TMP` to the test host and child processes.
+
+In Rider, open **Settings → Tools → Unit Testing → Test Runner** and select
+**Specify a custom test settings configuration**. Choose
+`codex/rocm-tests.runsettings`. Open the **Unit Tests** window, then run or
+debug `ROCm_BasicMovementExecutionTests.Copy_ProducesCorrectOutput` first.
+Run `ROCmBackendTests` for source/native compilation, then the `ROCm_`
+execution classes and ROCm rows of `MsBuildIntegrationTests`. Use the test
+window's failure details and captured stdout/stderr to investigate failures.
+Rider's test runner [supports custom `.runsettings` files and environment
+variables](https://www.jetbrains.com/help/rider/Reference__Options__Tools__Unit_Testing__Test_Runner.html).
+
+The same file can be checked outside Rider:
+
+```powershell
+dotnet test .\Src\ILGPUC.Tests\ILGPUC.Tests.csproj `
+  --settings .\codex\rocm-tests.runsettings `
+  --filter 'FullyQualifiedName~ROCm_BasicMovementExecutionTests.Copy_ProducesCorrectOutput'
+```
+
+The ordinary full test suite also includes CPU, CUDA, Metal, OpenCL, IR
+snapshots, and non-kernel tests. Results for those categories must be
+reported separately from ROCm-specific results; a skipped backend is not a
+ROCm pass. Do not set `ILGPU_UPDATE_IR=1` during a validation run, since it
+changes the reference snapshots.
 
 ---
 

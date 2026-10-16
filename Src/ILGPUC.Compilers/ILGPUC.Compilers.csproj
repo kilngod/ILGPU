@@ -25,4 +25,8 @@
     <Configurations>Debug;Release</Configurations>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="ILGPUC.CompilerService.Tests" />
+  </ItemGroup>
+
 </Project>

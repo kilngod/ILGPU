@@ -244,7 +244,7 @@ sealed class CompilationHelper : DisposeBase
             CudaArchitecture.SM_80, CudaInstructionSet.ISA_80),
         BackendType.Metal => new MetalBackend(
             MetalTargetOS.macOS, MetalGPUFamily.Apple7),
-        BackendType.ROCm => new ROCmBackend("gfx1100"),
+        BackendType.ROCm => new ROCmBackend(RocmTestConfiguration.Architecture),
         // The plain OpenCLBackend base class inherits Backend.CompileSourceAsync
         // which always returns null — only the concrete vendor subclasses
         // (OpenCLIntelBackend / OpenCLAmdBackend) override it to actually

@@ -99,6 +99,25 @@ sealed partial class Program
         };
 
         /// <summary>
+        /// HIP compiler routing mode. The environment supplies the default.
+        /// </summary>
+        readonly Option<string?> _rocmCompilerOption = new("--rocm-compiler")
+        {
+            Description =
+                "HIP compiler routing: auto or local "
+                + "(overrides ILGPU_ROCM_COMPILER)",
+        };
+
+        /// <summary>
+        /// Explicit HIP compiler executable. Selecting it implies local HIP.
+        /// </summary>
+        readonly Option<string?> _hipccPathOption = new("--hipcc-path")
+        {
+            Description =
+                "Path to a HIP 7.x hipcc executable (selects local HIP)",
+        };
+
+        /// <summary>
         /// When <see langword="true"/>, compiles all unique kernels concurrently
         /// using <see cref="Task.WhenAll(System.Collections.Generic.IEnumerable{Task})"/>
         /// instead of sequentially.
@@ -195,6 +214,8 @@ sealed partial class Program
                 _backendTypeOption,
                 _compileOption,
                 _compilerServiceOption,
+                _rocmCompilerOption,
+                _hipccPathOption,
                 _parallelOption,
                 _dumpIRAtOption,
                 _dumpIRDirOption,
@@ -322,7 +343,11 @@ sealed partial class Program
                 compilerManager = await CompilerManagerFactory.CreateAsync(
                     serviceUrls,
                     allowLocal: true,
-                    ct);
+                    ct,
+                    rocmCompilerMode:
+                        GetRocmCompilerMode(parseResult.GetValue(
+                            _rocmCompilerOption)),
+                    hipccPath: parseResult.GetValue(_hipccPathOption));
             }
 
             // Analyze the compilation

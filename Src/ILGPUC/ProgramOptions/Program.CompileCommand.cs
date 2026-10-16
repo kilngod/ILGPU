@@ -117,6 +117,25 @@ sealed partial class Program
         };
 
         /// <summary>
+        /// HIP compiler routing mode. The environment supplies the default.
+        /// </summary>
+        readonly Option<string?> _rocmCompilerOption = new("--rocm-compiler")
+        {
+            Description =
+                "HIP compiler routing: auto or local "
+                + "(overrides ILGPU_ROCM_COMPILER)",
+        };
+
+        /// <summary>
+        /// Explicit HIP compiler executable. Selecting it implies local HIP.
+        /// </summary>
+        readonly Option<string?> _hipccPathOption = new("--hipcc-path")
+        {
+            Description =
+                "Path to a HIP 7.x hipcc executable (selects local HIP)",
+        };
+
+        /// <summary>
         /// Pipeline stages at which to write normalized IR dump files to disk.
         /// </summary>
         readonly Option<IRDumpPoint[]> _dumpIRAtOption = new("--dump-ir-at")
@@ -207,6 +226,8 @@ sealed partial class Program
                 _backendTypeOption,
                 _compileOption,
                 _compilerServiceOption,
+                _rocmCompilerOption,
+                _hipccPathOption,
                 _dumpIRAtOption,
                 _dumpIRDirOption,
                 _printIROption,
@@ -246,7 +267,12 @@ sealed partial class Program
                 compilerManager = await CompilerManagerFactory.CreateAsync(
                     serviceUrls,
                     allowLocal: true,
-                    ct).ConfigureAwait(false);
+                    ct,
+                    rocmCompilerMode:
+                        GetRocmCompilerMode(parseResult.GetValue(
+                            _rocmCompilerOption)),
+                    hipccPath: parseResult.GetValue(_hipccPathOption))
+                    .ConfigureAwait(false);
             }
             var setup = BuildSetup(parseResult, compilerManager);
 

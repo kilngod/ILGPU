@@ -103,7 +103,16 @@ sealed class ProgramBuilder : DisposeBase
 
         // For GPU backends, override the device preference so the test
         // program creates the matching accelerator type instead of CPU.
-        if (_backend != BackendType.CPU)
+        if (_backend == BackendType.ROCm)
+        {
+            const string preferredDevice =
+                "context.GetPreferredDevice(preferCPU: true)";
+            const string rocmDevice =
+                "context.GetDevice<ILGPU.Runtime.ROCm.ROCmDevice>(0)";
+            for (int i = 0; i < sources.Length; i++)
+                sources[i] = sources[i].Replace(preferredDevice, rocmDevice);
+        }
+        else if (_backend != BackendType.CPU)
         {
             for (int i = 0; i < sources.Length; i++)
                 sources[i] = sources[i].Replace(
@@ -447,25 +456,23 @@ sealed class ProgramBuilder : DisposeBase
 
         // Debug: dump generated GPU source
         {
-            var dd = "/tmp/ilgpuc_debug";
+            var dd = Path.Combine(_tempDir, "debug");
             Directory.CreateDirectory(dd);
             File.WriteAllText(
-                Path.Combine(dd, $"{kernelName ?? "kernel"}.metal"),
+                Path.Combine(dd, $"{kernelName ?? "kernel"}.source"),
                 compiled.SourceCode);
         }
 
-        // Native compilation: produce binary if possible (Metal→metallib,
-        // CUDA→cubin, etc.). Without binary, the generated class embeds
-        // source and the GPU must compile at runtime, which may fail.
+        // Binary-emitting backends require native compilation before the
+        // generated program can run. Report the compiler failure here rather
+        // than producing a program that fails later while loading the kernel.
         byte[]? compiledBinary = null;
         if (backend.CreateCompiledKernelEmitter().EmbedMode == KernelEmbedMode.Binary)
         {
+            // GenerateWrapper is synchronous; match the existing
+            // sync-over-async pattern used for CompileSourceAsync below.
             try
             {
-                // GenerateWrapper is synchronous; match the existing
-                // sync-over-async pattern used for CompileSourceAsync
-                // below. The probe runs at most once per backend per
-                // process so the blocking cost is bounded.
                 var target = Availability.MapToTarget(_backend)
                     ?? throw new InvalidOperationException(
                         $"Backend '{_backend}' has no native compilation target.");
@@ -482,17 +489,15 @@ sealed class ProgramBuilder : DisposeBase
                         $"Native binary: {compiledBinary.Length} bytes");
                 }
                 else
-                {
-                    _output?.WriteLine(
-                        $"Native compilation failed: " +
-                        $"success={nativeResult?.Success} " +
-                        $"stderr={nativeResult?.StdErr}");
-                }
+                    throw new InvalidOperationException(
+                        $"Native compilation failed for {_backend}: " +
+                        $"{nativeResult?.StdErr ?? "No compiler result"}");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not InvalidOperationException)
             {
-                _output?.WriteLine(
-                    $"Native compilation error: {ex.Message}");
+                throw new InvalidOperationException(
+                    $"Native compilation failed for {_backend}: {ex.Message}",
+                    ex);
             }
         }
 
@@ -512,7 +517,7 @@ sealed class ProgramBuilder : DisposeBase
         var genResult = kernelGen.Generate();
 
         // Debug: dump generated wrapper source
-        var debugDir = "/tmp/ilgpuc_debug";
+        var debugDir = Path.Combine(_tempDir, "debug");
         Directory.CreateDirectory(debugDir);
         File.WriteAllText(
             Path.Combine(debugDir, $"{genResult.ClassName}.cs"),

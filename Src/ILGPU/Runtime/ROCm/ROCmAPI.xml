@@ -4,7 +4,7 @@
          DefaultReturnType="ROCmError"
          NotSupportedException="RuntimeErrorMessages.ROCmNotSupported">
     <LibraryNames>
-        <Windows>amdhip64</Windows>
+        <Windows>amdhip64_7</Windows>
         <Linux>amdhip64</Linux>
         <MacOS>amdhip64</MacOS>
     </LibraryNames>

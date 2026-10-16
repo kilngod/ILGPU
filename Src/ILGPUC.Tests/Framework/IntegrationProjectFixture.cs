@@ -141,11 +141,15 @@ sealed class IntegrationProjectFixture : IDisposable
             // resolved directly from AppContext.BaseDirectory so it stays
             // correct even if the layout ever changes.
             ["$(ILGPUC_DLL_DIR)"] = NormalizePath(IlgpucDllDir),
-            // PREFER_CPU is substituted into Program.cs.template's call to
-            // GetPreferredDevice. CPU theory cases need preferCPU: true; GPU
-            // backends (Metal etc.) need preferCPU: false so the runtime
-            // resolves a matching accelerator.
-            ["$(PREFER_CPU)"] = backend == BackendType.CPU ? "true" : "false",
+            // Select the requested runtime backend explicitly for ROCm so a
+            // CUDA device cannot win GetPreferredDevice on mixed GPU hosts.
+            ["$(DEVICE_SELECTION)"] = backend switch
+            {
+                BackendType.ROCm =>
+                    "GetDevice<ILGPU.Runtime.ROCm.ROCmDevice>(0)",
+                BackendType.CPU => "GetPreferredDevice(preferCPU: true)",
+                _ => "GetPreferredDevice(preferCPU: false)",
+            },
         };
         if (extraTokens is not null)
         {
@@ -199,6 +203,21 @@ sealed class IntegrationProjectFixture : IDisposable
     public async Task<MsBuildResult> BuildAsync(
         IDictionary<string, string>? extraProperties = null)
     {
+        if (Backend == BackendType.ROCm)
+        {
+            var properties = new Dictionary<string, string>
+            {
+                ["ILGPUCompile"] = "true",
+            };
+            properties["ILGPUBackendOptions"] =
+                $"--rocm-arch {RocmTestConfiguration.Architecture}";
+            if (extraProperties is not null)
+            {
+                foreach (var (key, value) in extraProperties)
+                    properties[key] = value;
+            }
+            extraProperties = properties;
+        }
         var result = await MsBuildRunner.BuildAsync(
             ProjectPath, properties: extraProperties).ConfigureAwait(false);
         LogResult("build", result);

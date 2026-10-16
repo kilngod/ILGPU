@@ -125,6 +125,9 @@ public abstract partial class CompilerBase : ICompiler
     /// The working directory for the process, or <c>null</c> to inherit the current one.
     /// </param>
     /// <param name="ct">A token to cancel the operation.</param>
+    /// <param name="environment">
+    /// Optional environment variables for the compiler process.
+    /// </param>
     /// <returns>
     /// A tuple of (<paramref name="fileName"/>'s exit code, stdout text, stderr text).
     /// </returns>
@@ -133,7 +136,8 @@ public abstract partial class CompilerBase : ICompiler
         string fileName,
         string arguments,
         string? workingDirectory,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
@@ -146,6 +150,11 @@ public abstract partial class CompilerBase : ICompiler
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        if (environment is not null)
+        {
+            foreach (var (name, value) in environment)
+                process.StartInfo.Environment[name] = value;
+        }
 
         process.Start();
 
