@@ -229,17 +229,7 @@ static class Program
         // Accelerated implementations
         using var context = Context.CreateDefault();
 
-        var device = context.Devices
-            .OrderByDescending(d => d.AcceleratorType switch
-            {
-                AcceleratorType.Metal  => 5,
-                AcceleratorType.Cuda   => 4,
-                AcceleratorType.ROCm   => 3,
-                AcceleratorType.OpenCL => 2,
-                AcceleratorType.CPU    => 1,
-                _                      => 0,
-            })
-            .First();
+        var device = SampleDeviceSelector.Select(context);
 
         using var accelerator = device.CreateAccelerator(context);
         var stream = accelerator.DefaultStream;

@@ -24,6 +24,8 @@ static class Program
     static void PerformPinnedCopyUsingGCHandle(Accelerator accelerator, int dataSize)
     {
         var array = new int[dataSize];
+        for (int i = 0; i < array.Length; i++)
+            array[i] = i * 3 + 1;
         var handle = GCHandle.Alloc(array, GCHandleType.Pinned);
         try
         {
@@ -34,6 +36,7 @@ static class Program
             bufferOnGPU.View.CopyFrom(stream, scope.ArrayView);
 
             stream.Synchronize();
+            VerifyCopy(bufferOnGPU.GetAsArray1D(), dataSize);
         }
         finally
         {
@@ -44,6 +47,8 @@ static class Program
     static void PerformPinnedCopyUsingGCAllocateArray(Accelerator accelerator, int dataSize)
     {
         var array = GC.AllocateArray<int>(dataSize, pinned: true);
+        for (int i = 0; i < array.Length; i++)
+            array[i] = i * 3 + 1;
 
         using var bufferOnGPU = accelerator.DefaultStream.Allocate1D<int>(array.Length);
         var stream = accelerator.DefaultStream;
@@ -52,6 +57,7 @@ static class Program
         bufferOnGPU.View.CopyFrom(stream, scope.ArrayView);
 
         stream.Synchronize();
+        VerifyCopy(bufferOnGPU.GetAsArray1D(), dataSize);
     }
 
     static void PerformPinnedCopyUsingAllocatePageLockedArray(
@@ -59,6 +65,8 @@ static class Program
         int dataSize)
     {
         using var array = accelerator.AllocatePageLocked1D<int>(dataSize);
+        for (int i = 0; i < dataSize; i++)
+            array[i] = i * 3 + 1;
 
         using var bufferOnGPU = accelerator.DefaultStream.Allocate1D<int>(array.Length);
         var stream = accelerator.DefaultStream;
@@ -74,7 +82,21 @@ static class Program
         var result1 = bufferOnGPU.GetAsArray1D();
 
         // Retrieve results into a new page locked array
-        var result2 = bufferOnGPU.View.GetAsPageLocked1D();
+        using var result2 = bufferOnGPU.View.GetAsPageLocked1D();
+        stream.Synchronize();
+        VerifyCopy(result1, dataSize);
+        VerifyCopy(result2.GetArray(), dataSize);
+        VerifyCopy(array.GetArray(), dataSize);
+    }
+
+    static void VerifyCopy(int[] data, int dataSize)
+    {
+        for (int i = 0; i < dataSize; i++)
+        {
+            if (data[i] != i * 3 + 1)
+                throw new InvalidOperationException(
+                    $"Pinned copy mismatch at {i}: {data[i]}");
+        }
     }
 
     static void Main()
@@ -83,17 +105,7 @@ static class Program
 
         using (var context = Context.CreateDefault())
         {
-            var device = context.Devices
-                .OrderByDescending(d => d.AcceleratorType switch
-                {
-                    AcceleratorType.Metal  => 5,
-                    AcceleratorType.Cuda   => 4,
-                    AcceleratorType.ROCm   => 3,
-                    AcceleratorType.OpenCL => 2,
-                    AcceleratorType.CPU    => 1,
-                    _                      => 0,
-                })
-                .First();
+            var device = SampleDeviceSelector.Select(context);
 
             using var accelerator = device.CreateAccelerator(context);
             Console.WriteLine($"Using {accelerator}");
@@ -107,17 +119,7 @@ static class Program
         using (var context = Context.Create(builder =>
             builder.Default().PageLocking(PageLockingMode.Auto)))
         {
-            var device = context.Devices
-                .OrderByDescending(d => d.AcceleratorType switch
-                {
-                    AcceleratorType.Metal  => 5,
-                    AcceleratorType.Cuda   => 4,
-                    AcceleratorType.ROCm   => 3,
-                    AcceleratorType.OpenCL => 2,
-                    AcceleratorType.CPU    => 1,
-                    _                      => 0,
-                })
-                .First();
+            var device = SampleDeviceSelector.Select(context);
 
             using var accelerator = device.CreateAccelerator(context);
             Console.WriteLine($"Using {accelerator} (Automatic Page Locking)");

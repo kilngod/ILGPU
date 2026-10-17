@@ -201,6 +201,12 @@ abstract class LanguageConfiguration
     public virtual bool LoadFieldAddressUsesVariable => false;
 
     /// <summary>
+    /// Returns true if load-field addresses use the structure field's byte
+    /// offset rather than pointer arithmetic in units of the field type.
+    /// </summary>
+    public virtual bool LoadFieldAddressUsesByteOffsets => false;
+
+    /// <summary>
     /// Returns true if struct declarations should be followed by a
     /// matching <c>typedef struct &lt;name&gt; &lt;name&gt;;</c> alias so
     /// the bare struct name can be used to reference the type. C99 and

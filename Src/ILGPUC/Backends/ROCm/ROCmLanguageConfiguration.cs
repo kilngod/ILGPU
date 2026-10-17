@@ -38,6 +38,9 @@ namespace ILGPUC.Backends.ROCm;
 sealed class ROCmLanguageConfiguration : CudaLanguageConfiguration
 {
     /// <inheritdoc/>
+    public override bool LoadFieldAddressUsesByteOffsets => true;
+
+    /// <inheritdoc/>
     /// <remarks>
     /// HIP uses CUDA-compatible address space keywords.
     /// </remarks>

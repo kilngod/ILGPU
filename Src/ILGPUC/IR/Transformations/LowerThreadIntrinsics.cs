@@ -121,7 +121,7 @@ sealed class LowerThreadIntrinsics(TransformationArgs args) : Transformation(arg
     {
         // Only lower non-built-in broadcasts
         if (value.IsBuiltIn)
-            return null;
+            return value;
 
         var variable = transform.Rewrite(value.Variable)!;
         var origin = transform.Rewrite(value.Origin)!;
@@ -145,7 +145,7 @@ sealed class LowerThreadIntrinsics(TransformationArgs args) : Transformation(arg
     {
         // Only lower non-built-in shuffles
         if (value.IsBuiltIn)
-            return null;
+            return value;
 
         var variable = transform.Rewrite(value.Variable)!;
         var origin = transform.Rewrite(value.Origin)!;

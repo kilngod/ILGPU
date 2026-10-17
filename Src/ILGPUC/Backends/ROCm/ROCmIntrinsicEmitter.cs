@@ -347,6 +347,25 @@ sealed class ROCmIntrinsicEmitter : IntrinsicEmitter
     public override string EmitBarrier() => "__syncthreads()";
 
     /// <inheritdoc/>
+    public override string? EmitPredicateBarrier(
+        string predicate,
+        PredicateBarrierKind kind,
+        PredicateBarrierPredicateKind predicateKind)
+    {
+        if (kind != PredicateBarrierKind.GroupLevel)
+            return null;
+
+        var intrinsic = predicateKind switch
+        {
+            PredicateBarrierPredicateKind.PopCount => "__syncthreads_count",
+            PredicateBarrierPredicateKind.And => "__syncthreads_and",
+            PredicateBarrierPredicateKind.Or => "__syncthreads_or",
+            _ => throw new ArgumentOutOfRangeException(nameof(predicateKind)),
+        };
+        return $"{intrinsic}({predicate})";
+    }
+
+    /// <inheritdoc/>
     public override string EmitMemoryFence() => "__threadfence()";
 
     #endregion

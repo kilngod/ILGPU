@@ -326,6 +326,15 @@ abstract class IntrinsicEmitter
     public abstract string EmitBarrier();
 
     /// <summary>
+    /// Emits a predicated barrier when the backend has a native intrinsic.
+    /// A null result preserves the existing backend lowering.
+    /// </summary>
+    public virtual string? EmitPredicateBarrier(
+        string predicate,
+        PredicateBarrierKind kind,
+        PredicateBarrierPredicateKind predicateKind) => null;
+
+    /// <summary>
     /// Emits a memory fence to ensure memory consistency.
     /// </summary>
     public abstract string EmitMemoryFence();

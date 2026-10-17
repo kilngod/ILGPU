@@ -43,7 +43,7 @@ static class Program
     static void Main()
     {
         using var context = Context.Create(b => b.Default());
-        using var accelerator = context.GetPreferredDevice(preferCPU: true)
+        using var accelerator = SampleDeviceSelector.Select(context, preferCpu: true)
             .CreateAccelerator(context);
         var stream = accelerator.DefaultStream;
 

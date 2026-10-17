@@ -74,8 +74,8 @@ partial class BasicBlockBuilder
             GroupDimensionValue _ => true,
             SubGroupDimensionValue _ => true,
             GridIndexValue _ => true,
-            GroupIndexValue _ => true,
-            SubGroupIndexValue _ => true,
+            // Group.Index varies by lane. Warp.Index is uniform within a warp,
+            // but not across a group, so neither is safe for group broadcasts.
             UnaryArithmeticValue unary =>
                 IsShuffleOrBroadcastConstant(unary.Value),
             BinaryArithmeticValue binary =>

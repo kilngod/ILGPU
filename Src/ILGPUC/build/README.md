@@ -199,7 +199,16 @@ Use `ilgpuc build --help` for all available options.
 
 ## Troubleshooting
 
-- **No kernels found**: If your source files have no `stream.Launch()` calls marked with `[ReplaceWithLauncher]`, the tool writes an empty manifest and exits cleanly. No files are swapped.
+- **No kernels found**: If your source files have no supported launch
+  calls, the tool writes an empty manifest and exits cleanly. No files are
+  swapped. A single-backend native ROCm build expands simple calls to the
+  referenced ILGPU `Initialize`, `Sequence`, and `Transform` helpers into
+  named kernels before scanning. This requires a stable view expression and
+  an inline lambda without captures where a callback is used. Calls to
+  multi-stage library algorithms such as `Reduce`, `Scan`, and `RadixSort`
+  still have launch sites inside the referenced assembly and require
+  cross-assembly AOT specialization; a successful project build alone does
+  not prove those algorithms will run.
 - **Build errors in rewritten code**: Check `obj/.../ilgpu/rewritten/` to see the rewritten source. The `#line` directives map errors back to original source locations.
 - **Response file contents**: Inspect `obj/.../ilgpu/args.rsp` to see exactly what arguments are passed to `ilgpuc`.
 - **Temporary-file permission errors**: From the repository root, run

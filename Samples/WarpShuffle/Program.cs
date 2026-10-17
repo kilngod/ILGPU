@@ -56,7 +56,11 @@ static class Kernels
         ComplexStruct inputValue,
         int sourceLane)
     {
-        var value = Warp.Shuffle(inputValue, sourceLane);
+        var value = new ComplexStruct(
+            inputValue.X + Group.Index,
+            inputValue.Y + Group.Index,
+            inputValue.Z + Group.Index);
+        value = Warp.Shuffle(value, sourceLane);
         dataTarget[Grid.GlobalThreadIndex] = value;
     }
 
@@ -93,17 +97,7 @@ static class Program
     {
         using var context = Context.CreateDefault();
 
-        var device = context.Devices
-            .OrderByDescending(d => d.AcceleratorType switch
-            {
-                AcceleratorType.Metal  => 5,
-                AcceleratorType.Cuda   => 4,
-                AcceleratorType.ROCm   => 3,
-                AcceleratorType.OpenCL => 2,
-                AcceleratorType.CPU    => 1,
-                _                      => 0,
-            })
-            .First();
+        var device = SampleDeviceSelector.Select(context);
 
         using var accelerator = device.CreateAccelerator(context);
         Console.WriteLine($"Using {accelerator}");
@@ -125,6 +119,12 @@ static class Program
             var target = dataTarget.GetAsArray1D();
             for (int i = 0, e = target.Length; i < e; ++i)
                 Console.WriteLine($"Data[{i}] = {target[i]}");
+            for (int i = 0; i < warpSize - 2; ++i)
+            {
+                if (target[i] != i + 2)
+                    throw new InvalidOperationException(
+                        $"ShuffleDown lane {i}: expected {i + 2}, got {target[i]}");
+            }
         }
 
         // 2) Generic shuffle: broadcast a complex struct from lane 0
@@ -142,6 +142,16 @@ static class Program
             var target = dataTarget.GetAsArray1D();
             for (int i = 0, e = target.Length; i < e; ++i)
                 Console.WriteLine($"Data[{i}] = {target[i]}");
+            for (int i = 0; i < target.Length; ++i)
+            {
+                if (target[i].X != inputValue.X ||
+                    target[i].Y != inputValue.Y ||
+                    target[i].Z != inputValue.Z)
+                {
+                    throw new InvalidOperationException(
+                        $"Generic shuffle lane {i}: expected {inputValue}, got {target[i]}");
+                }
+            }
         }
 
         // 3) Warp collectives: AllReduce, InclusiveScan, ExclusiveScan
@@ -169,6 +179,17 @@ static class Program
             Console.WriteLine("Warp AllReduce (min)");
             for (int i = 0; i < warpSize; ++i)
                 Console.WriteLine($"  Lane[{i}] = {target[warpSize * 3 + i]}");
+            for (int i = 0; i < warpSize; ++i)
+            {
+                if (target[i] != warpSize ||
+                    target[warpSize + i] != i ||
+                    target[warpSize * 2 + i] != i + 1 ||
+                    target[warpSize * 3 + i] != 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Warp collective result mismatch at lane {i}");
+                }
+            }
         }
 
         Console.WriteLine("Done.");

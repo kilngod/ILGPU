@@ -24,17 +24,7 @@ static class Program
     {
         using var context = Context.CreateDefault();
 
-        var device = context.Devices
-            .OrderByDescending(d => d.AcceleratorType switch
-            {
-                AcceleratorType.Metal  => 5,
-                AcceleratorType.Cuda   => 4,
-                AcceleratorType.ROCm   => 3,
-                AcceleratorType.OpenCL => 2,
-                AcceleratorType.CPU    => 1,
-                _                      => 0,
-            })
-            .First();
+        var device = SampleDeviceSelector.Select(context);
 
         using var accelerator = device.CreateAccelerator(context);
         Console.WriteLine($"Using {accelerator}");
@@ -44,7 +34,7 @@ static class Program
         using var buffer = stream.Allocate1D<int>(N);
 
         // Fill with a descending sequence: N-1, N-2, ..., 1, 0
-        stream.Sequence(buffer.View, i => (int)(N - 1 - i));
+        stream.Sequence(buffer.View, i => 31 - (int)i);
 
         // Ascending radix sort
         stream.RadixSort<int, AscendingInt32>(buffer.View);
@@ -53,7 +43,12 @@ static class Program
         Console.WriteLine("Ascending RadixSort:");
         var data = buffer.GetAsArray1D();
         for (int i = 0, e = data.Length; i < e; ++i)
+        {
+            if (data[i] != i)
+                throw new InvalidOperationException(
+                    $"Ascending radix sort failed at {i}: {data[i]}");
             Console.WriteLine($"Data[{i}] = {data[i]}");
+        }
 
         // Descending radix sort
         stream.RadixSort<int, DescendingInt32>(buffer.View);
@@ -62,6 +57,43 @@ static class Program
         Console.WriteLine("Descending RadixSort:");
         data = buffer.GetAsArray1D();
         for (int i = 0, e = data.Length; i < e; ++i)
+        {
+            if (data[i] != N - 1 - i)
+                throw new InvalidOperationException(
+                    $"Descending radix sort failed at {i}: {data[i]}");
             Console.WriteLine($"Data[{i}] = {data[i]}");
+        }
+
+        const int LargeLength = 1025;
+        var input = Enumerable.Range(0, LargeLength)
+            .Select(i => (i * 37 % 211) - 105)
+            .ToArray();
+        using var largeBuffer = stream.Allocate1D<int>(LargeLength);
+        largeBuffer.CopyFromCPU(input);
+
+        var expected = (int[])input.Clone();
+        Array.Sort(expected);
+        stream.RadixSort<int, AscendingInt32>(largeBuffer.View);
+        stream.Synchronize();
+        data = largeBuffer.GetAsArray1D();
+        for (int i = 0; i < LargeLength; ++i)
+        {
+            if (data[i] != expected[i])
+                throw new InvalidOperationException(
+                    $"Large ascending radix sort failed at {i}: {data[i]}");
+        }
+        Console.WriteLine("Large ascending radix sort passed.");
+
+        Array.Reverse(expected);
+        stream.RadixSort<int, DescendingInt32>(largeBuffer.View);
+        stream.Synchronize();
+        data = largeBuffer.GetAsArray1D();
+        for (int i = 0; i < LargeLength; ++i)
+        {
+            if (data[i] != expected[i])
+                throw new InvalidOperationException(
+                    $"Large descending radix sort failed at {i}: {data[i]}");
+        }
+        Console.WriteLine("Large descending radix sort passed.");
     }
 }

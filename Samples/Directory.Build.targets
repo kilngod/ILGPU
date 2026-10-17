@@ -1,0 +1,6 @@
+<Project>
+  <ItemGroup Condition="'$(OutputType)' == 'Exe'">
+    <Compile Include="$(MSBuildThisFileDirectory)SampleDeviceSelector.cs"
+             Link="SampleDeviceSelector.cs" />
+  </ItemGroup>
+</Project>

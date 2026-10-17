@@ -61,17 +61,7 @@ static class Program
     {
         using var context = Context.CreateDefault();
 
-        var device = context.Devices
-            .OrderByDescending(d => d.AcceleratorType switch
-            {
-                AcceleratorType.Metal  => 5,
-                AcceleratorType.Cuda   => 4,
-                AcceleratorType.ROCm   => 3,
-                AcceleratorType.OpenCL => 2,
-                AcceleratorType.CPU    => 1,
-                _                      => 0,
-            })
-            .First();
+        var device = SampleDeviceSelector.Select(context);
 
         using var accelerator = device.CreateAccelerator(context);
         Console.WriteLine($"Performing operations on {accelerator}");
@@ -96,7 +86,8 @@ static class Program
                 || data[i].Y[1] != i + 5
                 || data[i].Y[2] != i + 6
                 || data[i].Y[3] != i + 7)
-                Console.WriteLine($"Error at element location {i}");
+                throw new InvalidOperationException(
+                    $"Incorrect interleaved fields at element {i}");
         }
 
         Console.WriteLine("Done.");

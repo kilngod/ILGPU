@@ -24,17 +24,7 @@ static class Program
     {
         using var context = Context.CreateDefault();
 
-        var device = context.Devices
-            .OrderByDescending(d => d.AcceleratorType switch
-            {
-                AcceleratorType.Metal  => 5,
-                AcceleratorType.Cuda   => 4,
-                AcceleratorType.ROCm   => 3,
-                AcceleratorType.OpenCL => 2,
-                AcceleratorType.CPU    => 1,
-                _                      => 0,
-            })
-            .First();
+        var device = SampleDeviceSelector.Select(context);
 
         using var accelerator = device.CreateAccelerator(context);
         Console.WriteLine($"Using {accelerator}");
@@ -54,5 +44,23 @@ static class Program
         stream.Synchronize();
 
         Console.WriteLine($"Reduced = {result}");
+        if (result != 2016)
+            throw new InvalidOperationException(
+                $"Expected the sum 2016, got {result}");
+
+        using var output = stream.Allocate1D<int>(1);
+        stream.Reduce(
+            buffer.View.SubView(0, 63),
+            output.View.BaseView,
+            identity: 0,
+            apply: (a, b) => a + b,
+            atomicApply: (ref int t, int v) => Atomic.Add(ref t, v));
+        stream.Synchronize();
+
+        int outputResult = output.GetAsArray1D()[0];
+        Console.WriteLine($"Reduced output = {outputResult}");
+        if (outputResult != 1953)
+            throw new InvalidOperationException(
+                $"Expected the output sum 1953, got {outputResult}");
     }
 }

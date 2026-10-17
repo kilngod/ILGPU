@@ -41,21 +41,11 @@ static class Kernels
 
 static class Program
 {
-    static void Main()
+    static unsafe void Main()
     {
         using var context = Context.CreateDefault();
 
-        var device = context.Devices
-            .OrderByDescending(d => d.AcceleratorType switch
-            {
-                AcceleratorType.Metal  => 5,
-                AcceleratorType.Cuda   => 4,
-                AcceleratorType.ROCm   => 3,
-                AcceleratorType.OpenCL => 2,
-                AcceleratorType.CPU    => 1,
-                _                      => 0,
-            })
-            .First();
+        var device = SampleDeviceSelector.Select(context);
 
         using var accelerator = device.CreateAccelerator(context);
         Console.WriteLine($"Performing operations on {accelerator}");
@@ -72,7 +62,17 @@ static class Program
 
         var result = buffer.GetAsArray1D();
         for (int i = 0, e = result.Length; i < e; ++i)
+        {
+            var value = result[i];
+            if (value.Block1[0] != 11 || value.Block1[1] != 22 ||
+                value.Block2[0] != 33 || value.Block2[1] != 44 ||
+                value.Block2[2] != 55)
+            {
+                throw new InvalidOperationException(
+                    $"Incorrect fixed buffer at {i}: {value}");
+            }
             Console.WriteLine($"Result[{i}] = {result[i]}");
+        }
 
         Console.WriteLine("Done.");
     }

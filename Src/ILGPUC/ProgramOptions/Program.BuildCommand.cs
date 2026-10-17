@@ -326,6 +326,15 @@ sealed partial class Program
                     .CreateBackends(properties, parseResult))
                 .ToArray();
 
+            // Keep the library-helper expansion scoped to ROCm binary builds.
+            // Other backends retain their existing source and launcher path.
+            if (backends.Length == 1 &&
+                backends[0].AcceleratorType == AcceleratorType.ROCm &&
+                parseResult.GetValue(_compileOption))
+            {
+                compilation = LibraryLaunchSiteExpander.Expand(compilation);
+            }
+
             // Create compiler manager if --compile is set. Walks the full
             // resolution chain (explicit --compiler-service URIs → per-target
             // env vars → global env var → Docker default ports → local

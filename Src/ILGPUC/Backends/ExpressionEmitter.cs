@@ -250,6 +250,7 @@ sealed class ExpressionEmitter(GenerationContext context, TypeEmitter typeEmitte
             Broadcast broadcast => EmitBroadcast(broadcast),
             WarpReduce reduce => EmitWarpReduce(reduce),
             WarpScan scan => EmitWarpScan(scan),
+            PredicateBarrier barrier => EmitPredicateBarrier(barrier),
             GroupReduce => throw new NotSupportedException(
                 "GroupReduce must be lowered before codegen"),
             GroupScan => throw new NotSupportedException(
@@ -266,6 +267,16 @@ sealed class ExpressionEmitter(GenerationContext context, TypeEmitter typeEmitte
     }
 
     #endregion
+
+    private Emitted EmitPredicateBarrier(PredicateBarrier barrier)
+    {
+        var expression = IntrinsicEmitter.EmitPredicateBarrier(
+            Emit(barrier.Predicate).Text,
+            barrier.Kind,
+            barrier.PredicateKind);
+        return new Emitted(
+            expression ?? context.GetValueName(barrier), Prec.Atom);
+    }
 
     #region Helpers
 
@@ -1144,6 +1155,14 @@ sealed class ExpressionEmitter(GenerationContext context, TypeEmitter typeEmitte
             : $"{addrKeyword} {elemTypeName}*";
 
         var inner = Parenthesize(source, Prec.Unary);
+        if (context.LanguageConfig.LoadFieldAddressUsesByteOffsets)
+        {
+            var byteOffset = lfa.StructureType.GetOffset(lfa.FieldSpan.Access);
+            if (byteOffset == 0)
+                return new Emitted($"({castType}){inner}", Prec.Unary);
+            return new Emitted(
+                $"({castType})((char*){inner} + {byteOffset})", Prec.Unary);
+        }
         if (lfa.FieldSpan.Index == 0)
             return new Emitted($"({castType}){inner}", Prec.Unary);
         return new Emitted(
