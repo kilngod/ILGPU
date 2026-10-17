@@ -1,0 +1,19 @@
+API supported: True
+ROCm devices: 1
+AMD Radeon RX 9070 XT [Type: ROCm, WarpSize: 32, MaxNumThreads: 65536, MaxNumThreadsPerGroup: 1024, MemorySize: 17095983104]; architecture=gfx1201
+hipInit: 0
+hipSetDevice: 0
+hipStreamCreate: 0
+hipMalloc: 0
+hipMemsetAsync: 0
+hipMemcpyAsync H2D: 0
+hipMemcpyAsync D2H: 0
+hipStreamSynchronize: 0
+memory roundtrip: True
+hipModuleLoadData: 0
+hipModuleGetFunction: 0
+hipModuleLaunchKernel (zero grid): 1
+hipModuleUnload: 0
+hipFree: 0
+hipStreamDestroy: 0
+hipDeviceSynchronize: 0

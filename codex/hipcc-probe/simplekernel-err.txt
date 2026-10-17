@@ -1,0 +1,6 @@
+Fatal error.
+System.AccessViolationException: Attempted to read or write protected memory. This is often an indication that other memory is corrupt.
+   at ILGPU.Runtime.CPU.CPURuntimeView`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]].ScatterStore(System.ReadOnlySpan`1<Int32>, System.ReadOnlySpan`1<Int32>, System.ReadOnlySpan`1<Boolean>)
+   at MyKernel_CompiledKernel+MyKernel_4631.KernelEntryPoint(Int32, struct_4634, Int32, BufferPool)
+   at MyKernel_CompiledKernel.Launch(ILGPU.Runtime.AcceleratorStream, ILGPU.KernelConfig, Int64, ILGPU.Runtime.ArrayView1D`2<Int32,Dense>, Int32)
+   at SimpleKernel.Program.Main()

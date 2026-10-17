@@ -1,0 +1,1 @@
+Using gfx1201 [Type: OpenCL, WarpSize: 32, MaxNumThreads: 8192, MaxNumThreadsPerGroup: 256, MemorySize: 17095983104]

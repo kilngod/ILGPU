@@ -1,0 +1,2 @@
+hipInit=0
+hipGetDeviceCount=0 count=1
