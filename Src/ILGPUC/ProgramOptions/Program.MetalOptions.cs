@@ -9,6 +9,8 @@
 // Source License. See LICENSE.txt for details.
 // ---------------------------------------------------------------------------------------
 
+using ILGPU;
+using ILGPU.Runtime;
 using ILGPU.Runtime.Metal;
 using ILGPUC.Backends;
 using ILGPUC.Backends.Metal;
@@ -28,12 +30,13 @@ sealed partial class Program
     {
         /// <summary>
         /// One or more Metal GPU family strings
-        /// (e.g. <c>Apple7</c>, <c>Apple8</c>, <c>Apple9</c>) to target.
+        /// (e.g. <c>Apple7</c>, <c>Apple8</c>, <c>Apple9</c>) to target, or
+        /// <c>auto</c> to use local devices, falling back to Apple7 remotely.
         /// </summary>
         readonly Option<string[]> _metalArchOption = new("--metal-arch")
         {
-            Description = "Metal GPU family (Apple7, Apple8, Apple9)",
-            DefaultValueFactory = _ => ["Apple7"],
+            Description = "Metal GPU family (default: auto-detect; remote fallback: Apple7)",
+            DefaultValueFactory = _ => ["auto"],
             AllowMultipleArgumentsPerToken = true
         };
 
@@ -65,14 +68,31 @@ sealed partial class Program
                 parseResult.GetRequiredValue(_metalPlatformOption),
                 ignoreCase: true);
 
-            var architectures = parseResult
+            var requestedArchitectures = parseResult
                 .GetRequiredValue(_metalArchOption)
-                .Select(arch => Enum.Parse<MetalGPUFamily>(
-                    arch, ignoreCase: true))
+                .ToArray();
+            var architectures = ResolveArchitectures(
+                "--metal-arch",
+                requestedArchitectures,
+                DetectLocalArchitectures,
+                nameof(MetalGPUFamily.Apple7))
+                .Select(architecture => Enum.Parse<MetalGPUFamily>(
+                    architecture, ignoreCase: true))
                 .ToArray();
 
             foreach (var arch in architectures)
                 yield return new MetalBackend(platform, arch);
+        }
+
+        static IEnumerable<string> DetectLocalArchitectures()
+        {
+            using (var context = Context.Create(builder => builder.Metal()))
+            {
+                var architectures = new List<string>();
+                foreach (var device in context.GetDevices<MetalDevice>())
+                    architectures.Add(device.GPUFamily.ToString());
+                return architectures.ToArray();
+            }
         }
     }
 }

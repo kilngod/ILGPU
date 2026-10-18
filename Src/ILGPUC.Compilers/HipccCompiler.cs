@@ -85,7 +85,7 @@ public sealed class HipccCompiler : CompilerBase
                     HipTempEnvironment(tempDir)).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is IOException or
-                System.ComponentModel.Win32Exception)
+                System.ComponentModel.Win32Exception or InvalidOperationException)
             {
                 return Failure(
                     "",
@@ -231,9 +231,9 @@ public sealed class HipccCompiler : CompilerBase
         var errors = new List<string>();
         var candidates = new[]
         {
-            Path.GetTempPath(),
-            Environment.CurrentDirectory,
             AppContext.BaseDirectory,
+            Environment.CurrentDirectory,
+            Path.GetTempPath(),
         }.Distinct(StringComparer.OrdinalIgnoreCase);
 
         foreach (var root in candidates)
@@ -251,7 +251,9 @@ public sealed class HipccCompiler : CompilerBase
                 File.Delete(renamed);
                 var warning = errors.Count == 0
                     ? null
-                    : $"HIP temporary directory: {path} (system temp could not rename files).";
+                    : $"HIP temporary directory: {path} " +
+                        "(one or more earlier locations failed the " +
+                        "create-and-rename check).";
                 return (path, warning);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -267,13 +269,17 @@ public sealed class HipccCompiler : CompilerBase
     }
 
     private static IReadOnlyDictionary<string, string> HipTempEnvironment(
-        string path) =>
-        new Dictionary<string, string>
-        {
-            ["TEMP"] = path,
-            ["TMP"] = path,
-            ["TMPDIR"] = path,
-        };
+        string path)
+    {
+        var environment = new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, value) in WindowsHipToolchain.EnvironmentOverrides)
+            environment[name] = value;
+        environment["TEMP"] = path;
+        environment["TMP"] = path;
+        environment["TMPDIR"] = path;
+        return environment;
+    }
 
     private CompilationResult TempFailure(CompileRequest request, Exception ex) =>
         Failure(

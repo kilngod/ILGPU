@@ -16,8 +16,9 @@ namespace ILGPUC.Compilers;
 /// <summary>
 /// Resolves <see cref="ICompilerManager"/> instances against a chain of
 /// configuration sources: explicit URIs (probed for capabilities), per-target
-/// environment variables, a global environment variable, per-target Docker
-/// default ports, and finally the local toolchain.
+/// environment variables, a global environment variable, the local HIP toolchain
+/// when available in auto mode, per-target Docker default ports, and finally the
+/// local toolchain.
 /// </summary>
 /// <remarks>
 /// This is the single discovery path shared by the ILGPUC CLI and the test
@@ -39,7 +40,8 @@ namespace ILGPUC.Compilers;
 /// no probe; covers any unrouted target.
 /// </item>
 /// <item>
-/// Per-target Docker default ports (5001 / 5002 / 5003) — probed with a
+/// In auto mode, a local HIP compiler is selected before the ROCm Docker default
+/// when available. The CUDA and OpenCL Docker defaults remain probed with a
 /// 3-second timeout. Defaults match <c>Src/docker/run.sh</c>; bump both files
 /// together when reassigning.
 /// </item>
@@ -84,10 +86,11 @@ public static class CompilerManagerFactory
 
     /// <summary>
     /// Returns a single <see cref="ICompilerManager"/> for the given target,
-    /// honouring (in order) per-target env vars, the global env var, per-target
-    /// Docker default ports, and the local <see cref="CompilerManager"/> as
-    /// fallback. Non-HIP auto routes are cached per target per process; HIP
-    /// routes are resolved for each call so mode and SDK path changes are seen.
+    /// honouring (in order) per-target env vars, the global env var, local HIP
+    /// when available in auto mode, per-target Docker default ports, and the
+    /// local <see cref="CompilerManager"/> as fallback. Non-HIP auto routes are
+    /// cached per target per process; HIP routes are resolved for each call so
+    /// mode and SDK path changes are seen.
     /// </summary>
     /// <param name="target">The compilation target to resolve.</param>
     /// <param name="ct">A token to cancel the probe.</param>
@@ -183,7 +186,8 @@ public static class CompilerManagerFactory
         string? hipccPath,
         Func<string, RemoteCompilerManager> getRemote,
         Func<string?, bool, CompilerManager> getLocal,
-        Func<string, string?> getEnvironment)
+        Func<string, string?> getEnvironment,
+        Func<CompilerManager, bool>? isLocalHipAvailable = null)
     {
         var routes = new Dictionary<CompilationTarget, ICompilerManager>();
         var allTargets = Enum.GetValues<CompilationTarget>();
@@ -237,7 +241,18 @@ public static class CompilerManagerFactory
                 routes.TryAdd(target, remote);
         }
 
-        // 4. Per-target Docker default port probe.
+        // Prefer an installed local HIP compiler to the localhost Docker
+        // default in auto mode. Explicit remotes above retain precedence.
+        if (mode == RocmCompilerMode.Auto && allowLocal &&
+            !routes.ContainsKey(CompilationTarget.Hip))
+        {
+            local ??= getLocal(hipccPath, false);
+            if ((isLocalHipAvailable ?? (manager =>
+                    manager.IsAvailable(CompilationTarget.Hip)))(local))
+                routes[CompilationTarget.Hip] = local;
+        }
+
+        // 4. Per-target Docker default port probe for targets not yet routed.
         foreach (var target in allTargets)
         {
             if (routes.ContainsKey(target))
@@ -324,6 +339,15 @@ public static class CompilerManagerFactory
         var globalUrl = Environment.GetEnvironmentVariable("ILGPU_COMPILER_SERVICE_URL");
         if (!string.IsNullOrEmpty(globalUrl))
             return GetOrCreateRemote(globalUrl);
+
+        // In auto mode, a local HIP SDK is the default when it is available.
+        // Explicit service URLs above still take precedence.
+        if (target == CompilationTarget.Hip)
+        {
+            var local = GetLocalManager();
+            if (local.IsAvailable(CompilationTarget.Hip))
+                return local;
+        }
 
         // 3. Per-target Docker default — probe + fall back.
         var defaultUrl = GetDefaultDockerUrl(target);

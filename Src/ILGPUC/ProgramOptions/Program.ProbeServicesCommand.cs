@@ -66,8 +66,8 @@ sealed partial class Program
                     "Walks the same compiler-service resolution chain as "
                     + "`build` / `compile` and prints the resolved routing "
                     + "table. Honours --compiler-service flags, "
-                    + "ILGPU_*_SERVICE_URL env vars, and Docker default "
-                    + "ports (5001/5002/5003).")
+                    + "ILGPU_*_SERVICE_URL env vars, local HIP in auto mode, "
+                    + "and Docker default ports (5001/5002/5003).")
             {
                 _compilerServiceOption,
                 _allowLocalOption,

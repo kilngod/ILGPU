@@ -22,6 +22,7 @@
 using System;
 using ILGPU;
 using ILGPU.Runtime;
+using ILGPU.Samples;
 
 namespace Consumer;
 
@@ -43,8 +44,8 @@ static class Program
     static void Main()
     {
         using var context = Context.Create(b => b.Default());
-        using var accelerator = SampleDeviceSelector.Select(context, preferCpu: true)
-            .CreateAccelerator(context);
+        var device = SampleAcceleratorPrompt.Select(context);
+        using var accelerator = device.CreateAccelerator(context);
         var stream = accelerator.DefaultStream;
 
         using var buffer = stream.Allocate1D<int>(8);

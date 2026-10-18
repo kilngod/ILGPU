@@ -442,38 +442,33 @@ the result for the listed Linux host and does not establish compatibility
 with other Linux ROCm/GPU combinations. Windows HIP SDK 7.2/gfx1201 validation
 is recorded separately in `Src/ILGPUC/build/README.md`.
 
-### Run and debug ROCm tests in Rider on Windows
+### Run and debug ROCm tests in Rider
 
-Generate a local test settings file from the installed HIP SDK and MSVC
-toolset. The file is saved under the Git-ignored `codex/` directory:
+With `auto` mode, ILGPUC uses an installed local HIP compiler before probing
+the localhost Docker default, after any explicitly configured remote service.
+Native compilation tests already check compiler availability and skip when
+neither local nor remote compilation is available. No `.runsettings` file is
+required. The architecture is detected from the local ROCm device when
+available; set `ILGPU_ROCM_ARCH` to override it. Use
+`ILGPU_ROCM_COMPILER=local` only when you want to force local HIP ahead of
+configured remote services.
 
-```powershell
-.\Src\scripts\New-RocmRiderRunSettings.ps1 -Architecture gfx1201
-```
+On Windows, ILGPUC discovers an installed compatible MSVC v143 toolset and
+Windows SDK when it launches the local HIP compiler. If automatic discovery
+is unavailable, use a Developer PowerShell environment or provide
+`ILGPU_HIPCC_PATH` and the required compiler environment through Rider's test
+runner environment settings.
 
-For a different GPU, pass its `gfx` architecture. Use `-HipccPath`,
-`-VcvarsPath`, or `-MSVCToolsetVersion` when the installed paths or compatible
-toolset differ. Regenerate the file after updating HIP, Visual Studio, or
-the Windows `PATH`; it contains a snapshot of the developer environment.
-The generated settings supply `ILGPU_ROCM_COMPILER=local`, the HIP compiler
-path, architecture, compatible MSVC include/library paths, and writable
-`TEMP`/`TMP` to the test host and child processes.
+Open Rider's **Unit Tests** window, then run or debug
+`ROCm_BasicMovementExecutionTests.Copy_ProducesCorrectOutput` first. Run
+`ROCmBackendTests` for source/native compilation, then the `ROCm_` execution
+classes and ROCm rows of `MsBuildIntegrationTests`. Use the test window's
+failure details and captured stdout/stderr to investigate failures.
 
-In Rider, open **Settings → Tools → Unit Testing → Test Runner** and select
-**Specify a custom test settings configuration**. Choose
-`codex/rocm-tests.runsettings`. Open the **Unit Tests** window, then run or
-debug `ROCm_BasicMovementExecutionTests.Copy_ProducesCorrectOutput` first.
-Run `ROCmBackendTests` for source/native compilation, then the `ROCm_`
-execution classes and ROCm rows of `MsBuildIntegrationTests`. Use the test
-window's failure details and captured stdout/stderr to investigate failures.
-Rider's test runner [supports custom `.runsettings` files and environment
-variables](https://www.jetbrains.com/help/rider/Reference__Options__Tools__Unit_Testing__Test_Runner.html).
-
-The same file can be checked outside Rider:
+The same test can be run outside Rider:
 
 ```powershell
 dotnet test .\Src\ILGPUC.Tests\ILGPUC.Tests.csproj `
-  --settings .\codex\rocm-tests.runsettings `
   --filter 'FullyQualifiedName~ROCm_BasicMovementExecutionTests.Copy_ProducesCorrectOutput'
 ```
 
@@ -482,7 +477,6 @@ snapshots, and non-kernel tests. Results for those categories must be
 reported separately from ROCm-specific results; a skipped backend is not a
 ROCm pass. Do not set `ILGPU_UPDATE_IR=1` during a validation run, since it
 changes the reference snapshots.
-
 ---
 
 ## Adding a New Execution Test

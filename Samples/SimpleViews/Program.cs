@@ -16,7 +16,7 @@ using System.Diagnostics;
 using System.Linq;
 using ILGPU;
 using ILGPU.Runtime;
-using ILGPU.Runtime.CPU;
+using ILGPU.Samples;
 
 namespace SimpleViews;
 
@@ -83,8 +83,8 @@ static class Program
     {
         using var context = Context.CreateDefault();
 
-        using var accelerator = context.GetDevice<CPUDevice>(0)
-            .CreateAccelerator(context);
+        var device = SampleAcceleratorPrompt.Select(context);
+        using var accelerator = device.CreateAccelerator(context);
         var stream = accelerator.DefaultStream;
         using var buffer = stream.Allocate1D<int>(1024);
 

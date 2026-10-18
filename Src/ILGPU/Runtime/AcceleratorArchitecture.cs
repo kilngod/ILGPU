@@ -41,7 +41,7 @@ public readonly partial struct AcceleratorArchitecture(int major, int minor) :
 
     private static readonly Regex _parsingRegex = ArchitectureRegex();
 
-    [GeneratedRegex(@"^SM_(\d)(\d)$")]
+    [GeneratedRegex(@"^SM_(\d+)(\d)$")]
     private static partial Regex ArchitectureRegex();
 
     /// <summary>

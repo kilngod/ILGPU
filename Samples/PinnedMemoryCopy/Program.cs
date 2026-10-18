@@ -105,7 +105,7 @@ static class Program
 
         using (var context = Context.CreateDefault())
         {
-            var device = SampleDeviceSelector.Select(context);
+            var device = SampleAcceleratorPrompt.Select(context);
 
             using var accelerator = device.CreateAccelerator(context);
             Console.WriteLine($"Using {accelerator}");
@@ -119,7 +119,7 @@ static class Program
         using (var context = Context.Create(builder =>
             builder.Default().PageLocking(PageLockingMode.Auto)))
         {
-            var device = SampleDeviceSelector.Select(context);
+            var device = SampleAcceleratorPrompt.Select(context);
 
             using var accelerator = device.CreateAccelerator(context);
             Console.WriteLine($"Using {accelerator} (Automatic Page Locking)");

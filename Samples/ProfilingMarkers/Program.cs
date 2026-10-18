@@ -38,7 +38,7 @@ static class Program
         // Enable profiling via the context builder
         using var context = Context.Create(builder => builder.Default().Profiling());
 
-        var device = SampleDeviceSelector.Select(context);
+        var device = SampleAcceleratorPrompt.Select(context);
 
         using var accelerator = device.CreateAccelerator(context);
         Console.WriteLine($"Using {accelerator}");

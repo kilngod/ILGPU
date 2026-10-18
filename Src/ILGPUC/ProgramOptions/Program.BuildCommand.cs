@@ -337,7 +337,7 @@ sealed partial class Program
 
             // Create compiler manager if --compile is set. Walks the full
             // resolution chain (explicit --compiler-service URIs → per-target
-            // env vars → global env var → Docker default ports → local
+            // env vars → global env var → local HIP if available → Docker → local
             // toolchain). The local toolchain is included as a last-resort
             // fallback so single-machine builds keep working.
             ICompilerManager? compilerManager = null;

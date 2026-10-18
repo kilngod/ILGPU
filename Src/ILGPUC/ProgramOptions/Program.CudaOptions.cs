@@ -9,10 +9,12 @@
 // Source License. See LICENSE.txt for details.
 // ---------------------------------------------------------------------------------------
 
+using ILGPU;
 using ILGPU.Runtime;
 using ILGPU.Runtime.Cuda;
 using ILGPUC.Backends;
 using ILGPUC.Backends.Cuda;
+using System;
 using System.Collections.Generic;
 using System.CommandLine;
 using System.Linq;
@@ -28,12 +30,13 @@ sealed partial class Program
     {
         /// <summary>
         /// One or more CUDA compute-capability architecture strings
-        /// (e.g. <c>SM_80</c>) to target.
+        /// (e.g. <c>SM_80</c>) to target, or <c>auto</c> to use local CUDA
+        /// devices, falling back to SM_75 for remote compilation.
         /// </summary>
         readonly Option<string[]> _cudaArchitecturesOption = new("--cuda-arch")
         {
-            Description = "Cuda architecture to use",
-            DefaultValueFactory = _ => ["SM_80"],
+            Description = "CUDA architecture (default: auto-detect; remote fallback: SM_75)",
+            DefaultValueFactory = _ => ["auto"],
             AllowMultipleArgumentsPerToken = true
         };
 
@@ -64,12 +67,22 @@ sealed partial class Program
             CompilationProperties properties,
             ParseResult parseResult)
         {
-            var architectures = parseResult
+            var requestedArchitectures = parseResult
                 .GetRequiredValue(_cudaArchitecturesOption)
+                .ToArray();
+            var architectures = ResolveArchitectures(
+                "--cuda-arch",
+                requestedArchitectures,
+                DetectLocalArchitectures,
+                "SM_75")
                 .Select(architecture =>
                 {
                     if (!AcceleratorArchitecture.TryParse(architecture, out var arch))
-                        arch = CudaArchitecture.SM_80;
+                    {
+                        throw new ArgumentException(
+                            $"Invalid CUDA architecture '{architecture}'. " +
+                            "Expected SM_NN, for example SM_80.");
+                    }
                     return arch;
                 })
                 .ToArray();
@@ -86,6 +99,20 @@ sealed partial class Program
             foreach (var arch in architectures)
                 foreach (var isa in instructionSets)
                     yield return new CudaBackend(arch, isa);
+        }
+
+        static IEnumerable<string> DetectLocalArchitectures()
+        {
+            using (var context = Context.Create(builder => builder.Cuda()))
+            {
+                var architectures = new List<string>();
+                foreach (var device in context.GetDevices<CudaDevice>())
+                {
+                    if (device.Architecture.HasValue)
+                        architectures.Add(device.Architecture.Value.ToString());
+                }
+                return architectures.ToArray();
+            }
         }
     }
 }

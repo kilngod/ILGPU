@@ -1,6 +1,7 @@
 <Project>
   <ItemGroup Condition="'$(OutputType)' == 'Exe'">
-    <Compile Include="$(MSBuildThisFileDirectory)SampleDeviceSelector.cs"
-             Link="SampleDeviceSelector.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SampleAcceleratorPrompt.cs"
+             Link="SampleAcceleratorPrompt.cs" />
+    <Using Include="ILGPU.Samples" />
   </ItemGroup>
 </Project>

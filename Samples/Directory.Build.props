@@ -17,6 +17,13 @@
          Default to CPU for now; override with: dotnet build -p:ILGPUBackend=Metal -->
     <ILGPUBackend Condition="'$(ILGPUBackend)' == ''">CPU</ILGPUBackend>
 
+    <!-- Selecting ROCm enables native HIP compilation for sample projects.
+         ILGPUC auto-detects all distinct architectures from local ROCm devices.
+         Set ILGPU_ROCM_ARCH (for example gfx1201) to cross-compile explicitly. -->
+    <ILGPUCompile Condition="'$(ILGPUBackend)' == 'ROCm' and '$(ILGPUCompile)' == ''">true</ILGPUCompile>
+    <ILGPURocmCompiler Condition="'$(ILGPUBackend)' == 'ROCm' and '$(ILGPURocmCompiler)' == ''">auto</ILGPURocmCompiler>
+    <ILGPUBackendOptions Condition="'$(ILGPUBackend)' == 'ROCm' and '$(ILGPUBackendOptions)' == '' and '$(ILGPU_ROCM_ARCH)' != ''">--rocm-arch $(ILGPU_ROCM_ARCH)</ILGPUBackendOptions>
+
     <!-- ILGPUC compiler tool invocation -->
     <ILGPUCompilerTool>dotnet "$(ILGPUBinDir)/ILGPUC.dll"</ILGPUCompilerTool>
 

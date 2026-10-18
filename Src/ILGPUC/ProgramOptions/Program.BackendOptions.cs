@@ -10,8 +10,10 @@
 // ---------------------------------------------------------------------------------------
 
 using ILGPUC.Backends;
+using System;
 using System.Collections.Generic;
 using System.CommandLine;
+using System.Linq;
 
 namespace ILGPUC;
 
@@ -27,6 +29,43 @@ sealed partial class Program
     /// </param>
     abstract class BackendOptions(BackendType backendType)
     {
+        /// <summary>
+        /// Resolves an architecture option using local devices when requested,
+        /// falling back to the backend's conservative target for remote builds.
+        /// </summary>
+        protected static string[] ResolveArchitectures(
+            string optionName,
+            string[] requestedArchitectures,
+            Func<IEnumerable<string>> detectArchitectures,
+            string fallbackArchitecture)
+        {
+            if (!requestedArchitectures.Any(
+                architecture => string.Equals(
+                    architecture,
+                    "auto",
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                return requestedArchitectures;
+            }
+
+            if (requestedArchitectures.Length != 1)
+            {
+                throw new ArgumentException(
+                    $"{optionName} auto cannot be combined with explicit architectures.");
+            }
+
+            var detectedArchitectures = detectArchitectures()
+                .Where(architecture => !string.IsNullOrWhiteSpace(architecture))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            // A remote compiler container cannot inspect a host GPU. Use the
+            // backend's stable baseline target when local discovery is absent.
+            return detectedArchitectures.Length > 0
+                ? detectedArchitectures
+                : [fallbackArchitecture];
+        }
+
         /// <summary>The backend type represented by this options object.</summary>
         public BackendType BackendType { get; } = backendType;
 

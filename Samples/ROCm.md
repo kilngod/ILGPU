@@ -1,30 +1,51 @@
 # Running the samples with ROCm
 
-The executable samples accept `ILGPU_SAMPLE_DEVICE=ROCm` to select a local
-ROCm device at runtime. An unavailable requested device causes an explicit
-error. With the variable unset, each sample keeps its previous device
-priority (Metal, CUDA, ROCm, OpenCL, CPU). `SimpleViews` intentionally uses
-CPU-only direct view indexing and does not use the selector.
+The samples build kernels for the selected backend and all locally detected
+ROCm architectures. At runtime, they list the accelerators discovered by
+ILGPU. The default is the first CUDA, ROCm, or Metal device, with larger-memory
+devices first; OpenCL follows, then CPU. The default ordering gives CUDA,
+ROCm, and Metal equal priority. In an interactive console, use Up/Down to
+choose and press Enter; the highlighted choice runs automatically after four
+seconds. When input is redirected, the default is selected automatically.
+Device entries show their architecture when ILGPU reports it, such as
+`gfx1201`. `SimpleViews` intentionally uses CPU-only direct view indexing.
 
 Native binary builds require HIP SDK 7.x, a compatible AMD GPU and driver,
-and the host C++ toolchain. Set the architecture to the GPU's `gfx` name;
-the Windows run below used `gfx1201`. Compiler discovery normally finds
+and the host C++ toolchain. By default ILGPUC reads the architecture from
+local ROCm devices and targets every distinct architecture it finds. Set
+`ILGPU_ROCM_ARCH` to a `gfx` name such as `gfx1201` when cross-compiling or
+when no local ROCm device is available. Compiler discovery normally finds
 `hipcc`; set `ILGPU_HIPCC_PATH` only for a custom install that discovery
 cannot locate.
 
-On Windows, first create the local Rider/test environment and then run the
-sample matrix from the repository root:
+Sample projects share `Samples/Directory.Build.props`. Selecting
+`ILGPUBackend=ROCm` there enables native compilation and Auto compiler
+routing. Set `ILGPU_ROCM_ARCH` in the build environment to pass an explicit
+architecture. In Rider, this lets you select ROCm with one MSBuild property
+instead of repeating the compile and compiler-mode properties for each
+sample. Compiler routing is a build-time choice. Docker compiler services
+compile kernels remotely; they are not listed as execution devices. After
+compilation, the sample prompts for a device available to its process. To run
+on a remote datacenter GPU, the sample itself must run on a host or GPU-enabled
+container that can access that GPU; the compiler service does not execute
+sample kernels.
+
+On Windows, run the sample matrix from the repository root:
 
 ```powershell
-.\Src\scripts\New-RocmRiderRunSettings.ps1 -Architecture gfx1201
-.\Src\scripts\Invoke-RocmSamples.ps1 -Architecture gfx1201 -Rebuild
+.\Src\scripts\Invoke-RocmSamples.ps1 -Rebuild
 ```
 
+Pass `-Architecture gfx1201` only to override discovery or cross-compile.
+
 The script builds each eligible executable with `ILGPUBackend=ROCm`,
-`ILGPUCompile=true`, `ILGPURocmCompiler=local`, and
-`ILGPUBackendOptions=--rocm-arch gfx1201`; it launches with
-`ILGPU_SAMPLE_DEVICE=ROCm`. It writes build logs, run logs, host/compiler
-metadata, and `results.json` under ignored `codex/temp/rocm-samples`.
+`ILGPUCompile=true`, `ILGPURocmCompiler=auto`, and automatic architecture
+detection unless `-Architecture` is supplied; it runs against ROCm
+noninteractively and verifies the reported backend. Auto compiler mode uses a
+discovered local HIP compiler when available, then the configured service or
+Docker route. Local execution requires the host's ROCm runtime and GPU. The
+script writes build logs, run logs, host/compiler metadata, and `results.json` under ignored
+`codex/temp/rocm-samples`.
 Pass `-ProjectNames SimpleKernel,FixedSizeBuffers` for a focused run.
 The initial full run recorded six algorithm launcher failures. Each reported
 “No kernel launch sites found” and produced an empty kernel manifest. The
@@ -32,14 +53,17 @@ six samples now use consumer-side expansion so their launches are visible to
 ILGPUC. `-IncludeKnownLauncherFailures` remains available for investigating
 future known launcher failures; none are currently listed.
 
-In Rider, use the same four MSBuild properties for a sample project, and
-set `ILGPU_SAMPLE_DEVICE=ROCm` in its run/debug configuration. The generated
-`codex/rocm-tests.runsettings` is for test execution and provides the
-Windows compiler environment for the matrix script.
+In Rider, set `ILGPUBackend=ROCm` for a sample project. The shared sample
+build file enables native compilation and Auto compiler routing. The build
+automatically targets every local ROCm device architecture; no architecture
+property is needed on a machine with visible ROCm devices. At runtime, the
+sample prompts for an accelerator. Set `ILGPU_SAMPLE_DEVICE=ROCm` to run a
+ROCm-specific matrix noninteractively; otherwise the menu offers all
+accelerators discovered by ILGPU.
 
-On Linux, install the tested ROCm 7.2.4 SDK and host toolchain, set a writable
-`TMPDIR`, and use the architecture reported by the HIP runtime. The validated
-host was validated on 2026-10-17: Ubuntu 24.04.4 LTS (x86_64), kernel
+On Linux, install the tested ROCm 7.2.4 SDK and host toolchain and set a
+writable `TMPDIR`. The build reads architectures from the HIP runtime. The
+Linux host was validated on 2026-10-17: Ubuntu 24.04.4 LTS (x86_64), kernel
 `6.8.0-147-generic`, .NET SDK
 `10.0.111`, ROCm `7.2.4` / HIP `7.2.53211`, Radeon RX 7900 XTX (`gfx1100`),
 and the in-kernel `amdgpu` driver. `/usr/bin/hipcc` resolves to the installed
@@ -52,9 +76,7 @@ the matrix from the repository root:
 ```bash
 mkdir -p codex/temp
 export TMPDIR="$PWD/codex/temp"
-export ILGPU_ROCM_COMPILER=local
-export ILGPU_ROCM_ARCH=gfx1100
-export ILGPU_SAMPLE_DEVICE=ROCm
+export ILGPU_ROCM_COMPILER=auto
 while IFS= read -r -d '' project; do
   case "$project" in
     Samples/DeviceInfo/DeviceInfo.csproj|Samples/Empty/Empty.csproj|\
@@ -65,7 +87,7 @@ while IFS= read -r -d '' project; do
   esac
   dotnet restore "$project" || exit 1
 done < <(find Samples -name '*.csproj' -print0)
-pwsh ./Src/scripts/Invoke-RocmSamples.ps1 -Architecture gfx1100 -Rebuild
+pwsh ./Src/scripts/Invoke-RocmSamples.ps1 -Rebuild
 ```
 
 The script requires PowerShell 7 on Linux. For an individual sample without
@@ -74,8 +96,8 @@ PowerShell, use the equivalent build properties:
 ```sh
 dotnet build Samples/SimpleKernel/SimpleKernel.csproj \
   -p:Configuration=Debug -p:ILGPUBackend=ROCm -p:ILGPUCompile=true \
-  -p:ILGPURocmCompiler=local '-p:ILGPUBackendOptions=--rocm-arch gfx1100'
-ILGPU_SAMPLE_DEVICE=ROCm dotnet Samples/SimpleKernel/bin/Debug/net10.0/SimpleKernel.dll
+  -p:ILGPURocmCompiler=auto
+dotnet Samples/SimpleKernel/bin/Debug/net10.0/SimpleKernel.dll
 ```
 
 `SimpleKernel` selected the RX 7900 XTX, loaded and ran its generated

@@ -35,6 +35,14 @@ public sealed class CompilerManager(IEnumerable<ICompiler> compilers) : ICompile
     public string? HipccPath { get; }
 
     /// <summary>
+    /// Returns whether the local compiler for a target is available.
+    /// </summary>
+    /// <param name="target">The compilation target to check.</param>
+    /// <returns><see langword="true"/> when the compiler is available.</returns>
+    public bool IsAvailable(CompilationTarget target) =>
+        _compilers.TryGetValue(target, out var compiler) && compiler.IsAvailable;
+
+    /// <summary>
     /// Initializes a new <see cref="CompilerManager"/> with default compiler paths.
     /// </summary>
     public CompilerManager()

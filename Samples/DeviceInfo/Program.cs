@@ -14,6 +14,7 @@
 using System;
 using ILGPU;
 using ILGPU.Runtime;
+using ILGPU.Samples;
 
 namespace DeviceInfo;
 
@@ -32,15 +33,10 @@ static class Program
 
     static void Main()
     {
-        // Enumerate all available devices
         using var context = Context.CreateDefault();
-
-        foreach (var device in context)
-        {
-            using var accelerator = device.CreateAccelerator(context);
-            Console.WriteLine($"Accelerator: {device.AcceleratorType}, {accelerator.Name}");
-            PrintAcceleratorInfo(accelerator);
-            Console.WriteLine();
-        }
+        var device = SampleAcceleratorPrompt.Select(context);
+        using var accelerator = device.CreateAccelerator(context);
+        Console.WriteLine($"Accelerator: {device.AcceleratorType}, {accelerator.Name}");
+        PrintAcceleratorInfo(accelerator);
     }
 }

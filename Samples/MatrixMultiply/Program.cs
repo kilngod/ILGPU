@@ -229,7 +229,7 @@ static class Program
         // Accelerated implementations
         using var context = Context.CreateDefault();
 
-        var device = SampleDeviceSelector.Select(context);
+        var device = SampleAcceleratorPrompt.Select(context);
 
         using var accelerator = device.CreateAccelerator(context);
         var stream = accelerator.DefaultStream;

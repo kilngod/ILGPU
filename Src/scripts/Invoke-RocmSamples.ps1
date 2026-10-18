@@ -1,16 +1,25 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidatePattern('^gfx[0-9a-z]+$')]
     [string] $Architecture,
     [string[]] $ProjectNames,
     [string] $OutputDirectory,
-    [string] $WindowsRunSettings,
     [switch] $Rebuild,
     [switch] $IncludeKnownLauncherFailures
 )
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
+$architectureOverride = $Architecture
+if (-not $architectureOverride) {
+    $architectureOverride = $env:ILGPU_ROCM_ARCH
+}
+if ($architectureOverride -and $architectureOverride -notmatch '^gfx[0-9a-z]+$') {
+    throw "Invalid ROCm architecture '$architectureOverride'. Expected a gfx target such as gfx1201."
+}
+$rocmArchitectureArgument = if ($architectureOverride) {
+    $architectureOverride
+} else {
+    'auto'
+}
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repoRoot 'codex\temp\rocm-samples'
@@ -18,29 +27,18 @@ if (-not $OutputDirectory) {
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $OutputDirectory = (Resolve-Path -LiteralPath $OutputDirectory).Path
 
-if ($IsWindows) {
-    if (-not $WindowsRunSettings) {
-        $WindowsRunSettings = Join-Path $repoRoot 'codex\rocm-tests.runsettings'
-    }
-    if (-not (Test-Path -LiteralPath $WindowsRunSettings -PathType Leaf)) {
-        throw "Create '$WindowsRunSettings' with New-RocmRiderRunSettings.ps1 first."
-    }
-    [xml] $settings = Get-Content -LiteralPath $WindowsRunSettings
-    foreach ($variable in $settings.RunSettings.RunConfiguration.EnvironmentVariables.ChildNodes) {
-        if ($variable.Name -ne 'ILGPU_HIPCC_PATH') {
-            [Environment]::SetEnvironmentVariable(
-                $variable.Name, $variable.InnerText, 'Process')
-        }
-    }
-} else {
+if (-not $IsWindows) {
     $workspaceTemp = Join-Path $repoRoot 'codex/temp'
     New-Item -ItemType Directory -Path $workspaceTemp -Force | Out-Null
     $env:TMPDIR = $workspaceTemp
 }
 
-$env:ILGPU_ROCM_COMPILER = 'local'
-$env:ILGPU_ROCM_ARCH = $Architecture
+$env:ILGPU_ROCM_COMPILER = 'auto'
 $env:ILGPU_SAMPLE_DEVICE = 'ROCm'
+if ($architectureOverride) {
+    $env:ILGPU_ROCM_ARCH = $architectureOverride
+}
+$env:ILGPU_SAMPLE_NONINTERACTIVE = '1'
 $env:MSBUILDDISABLENODEREUSE = '1'
 
 $compilerPath = $env:ILGPU_HIPCC_PATH
@@ -66,16 +64,19 @@ if (-not $compilerPath) {
 }
 $runInfo = [pscustomobject]@{
     Host = [Runtime.InteropServices.RuntimeInformation]::OSDescription
-    Architecture = $Architecture
-    CompilerMode = 'local'
+    Architecture = if ($architectureOverride) {
+        $architectureOverride
+    } else { 'auto-detected from local ROCm device(s)' }
+    CompilerMode = 'auto (local HIP when available, otherwise configured service or Docker)'
     CompilerPath = if ($compilerPath) { $compilerPath } else { 'ILGPUC discovery' }
     HipPath = $env:HIP_PATH
     RocmPath = $env:ROCM_PATH
     DotnetVersion = (& dotnet --version)
     BuildOptions = @(
         'ILGPUBackend=ROCm', 'ILGPUCompile=true',
-        'ILGPURocmCompiler=local', "ILGPUBackendOptions=--rocm-arch $Architecture")
-    RuntimeSelection = 'ILGPU_SAMPLE_DEVICE=ROCm'
+        'ILGPURocmCompiler=auto',
+        "ILGPUBackendOptions=--rocm-arch $rocmArchitectureArgument")
+    RuntimeSelection = 'ROCm (noninteractive matrix run)'
     StartedAt = (Get-Date).ToString('o')
 }
 $runInfo | ConvertTo-Json -Depth 3 |
@@ -443,8 +444,8 @@ foreach ($project in $projects) {
         '-p:Configuration=Debug',
         '-p:ILGPUBackend=ROCm',
         '-p:ILGPUCompile=true',
-        '-p:ILGPURocmCompiler=local',
-        "-p:ILGPUBackendOptions=--rocm-arch $Architecture",
+        '-p:ILGPURocmCompiler=auto',
+        "-p:ILGPUBackendOptions=--rocm-arch $rocmArchitectureArgument",
         '-m:1', '-nr:false', '-v:minimal'
     )
     if ($Rebuild) { $buildArgs += '-t:Rebuild' }

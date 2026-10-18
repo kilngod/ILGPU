@@ -32,7 +32,7 @@ static class Program
     {
         using var context = Context.CreateDefault();
 
-        var device = SampleDeviceSelector.Select(context);
+        var device = SampleAcceleratorPrompt.Select(context);
 
         using var accelerator = device.CreateAccelerator(context);
         Console.WriteLine($"Using {accelerator}");

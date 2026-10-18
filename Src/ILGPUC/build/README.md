@@ -208,15 +208,33 @@ limitations, and excluded 6 non-kernel/separate-workflow projects. See
 commands. Remote compiler routing was covered by focused routing tests and
 an in-process mock integration test; this sample matrix used local HIP.
 
+### Architecture selection
+
+For `--cuda-arch`, `--rocm-arch`, and `--metal-arch`, the default `auto`
+detects the distinct architectures or GPU families reported by local devices
+and creates a backend for each. If the build host has no device for that
+backend, ILGPUC uses its conservative fallback target: CUDA `SM_75`, ROCm
+`gfx1100`, or Metal `Apple7`. These fallbacks let remote compiler containers
+build without GPU passthrough. If the execution GPU is on a different host or
+has a different architecture, pass the appropriate explicit option to target
+that device. CUDA's PTX ISA remains separately controlled by `--cuda-isa`.
+
+ILGPUC accepts ROCm targets `gfx1100` and newer, plus the explicit older
+exceptions `gfx908`, `gfx90a`, `gfx942`, `gfx950`, and `gfx1030`. Local `auto`
+detection includes only devices in this set; explicitly requesting another
+architecture produces an error. `gfx1100` itself is included.
+
 ### Remote compiler service and Docker route
 
 The existing remote service route remains available. Set
 `ILGPUCompilerServices` to one or more service URLs and leave
 `ILGPURocmCompiler` empty or set it to `auto`. ILGPUC probes explicit
 service URLs first, then configured environment URLs, then the localhost
-Docker default, before falling back to a local compiler. A remote service
-can compile on another host, including Linux; the machine executing the
-kernel still needs a compatible AMD runtime and GPU. See
+Docker default for non-HIP targets. For HIP in `auto` mode, ILGPUC checks for
+a local HIP compiler before the localhost Docker default; an installed local
+compiler is selected when available. Explicit service URLs retain precedence.
+A remote service can compile on another host, including Linux; the machine
+executing the kernel still needs a compatible AMD runtime and GPU. See
 `Src/docker/` for the container setup and `probe-services` for the route
 selected by the current environment.
 

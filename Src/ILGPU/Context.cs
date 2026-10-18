@@ -216,6 +216,38 @@ public sealed partial class Context : DisposeBase
         : new DeviceCollection<TDevice>([]);
 
     /// <summary>
+    /// Attempts to return the most preferred device, preferring native GPU
+    /// backends over OpenCL and falling back to the CPU when no GPU is
+    /// available. Devices within a backend group are ordered by memory size.
+    /// </summary>
+    /// <returns>Selected device.</returns>
+    public Device GetPreferredDevice() =>
+        GetPreferredDevice(preferCPU: false);
+
+    /// <summary>
+    /// Attempts to return the most optimal device of the given accelerator
+    /// type.
+    /// </summary>
+    /// <param name="acceleratorType">The required accelerator type.</param>
+    /// <returns>Selected device.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// No device of the requested accelerator type is available.
+    /// </exception>
+    public Device GetPreferredDevice(AcceleratorType acceleratorType)
+    {
+        if (_deviceMapping.TryGetValue(acceleratorType, out var devices) &&
+            devices.Count > 0)
+        {
+            return devices
+                .OrderByDescending(device => device.MemorySize)
+                .First();
+        }
+
+        throw new InvalidOperationException(
+            $"No {acceleratorType} device is available in this context.");
+    }
+
+    /// <summary>
     /// Attempts to return the most optimal single device.
     /// </summary>
     /// <param name="preferCPU">Always returns CPU device 0.</param>
@@ -242,8 +274,9 @@ public sealed partial class Context : DisposeBase
         }
 
         var sorted = Devices
-            .OrderByDescending(d => d.MemorySize)
             .Where(d => d.AcceleratorType != AcceleratorType.CPU)
+            .OrderBy(d => GetAcceleratorPriority(d.AcceleratorType))
+            .ThenByDescending(d => d.MemorySize)
             .ToList();
 
         if (sorted.Count > 0)
@@ -269,6 +302,19 @@ public sealed partial class Context : DisposeBase
                         RuntimeErrorMessages.NotSupportedTargetAccelerator);
         }
     }
+
+    /// <summary>
+    /// Returns the automatic device-selection priority for a backend.
+    /// </summary>
+    private static int GetAcceleratorPriority(AcceleratorType acceleratorType) =>
+        acceleratorType switch
+        {
+            AcceleratorType.Cuda or
+            AcceleratorType.ROCm or
+            AcceleratorType.Metal => 0,
+            AcceleratorType.OpenCL => 1,
+            _ => 2,
+        };
 
     /// <summary>
     /// Raises the corresponding <see cref="AcceleratorCreated"/> event.

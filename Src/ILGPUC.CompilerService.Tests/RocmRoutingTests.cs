@@ -122,16 +122,53 @@ public class RocmRoutingTests
         Assert.Same(hipRemote, routes.Routes[CompilationTarget.Hip]);
     }
 
+    [Fact]
+    public async Task AutoPrefersAvailableLocalHipBeforeDockerDefault()
+    {
+        var remote = Remote(new Uri("http://localhost:5002/"),
+            CompilationTarget.Hip, CompilationTarget.Cuda);
+        var local = Local();
+
+        var routes = await Create(
+            null, RocmCompilerMode.Auto, null,
+            _ => remote, (_, _) => local,
+            allowLocal: true, localHipAvailable: true);
+
+        Assert.Same(local, routes.Routes[CompilationTarget.Hip]);
+        Assert.Same(remote, routes.Routes[CompilationTarget.Cuda]);
+    }
+
+    [Fact]
+    public async Task AutoUsesDockerWhenLocalHipIsUnavailable()
+    {
+        var remote = Remote(new Uri("http://localhost:5002/"),
+            CompilationTarget.Hip);
+
+        var routes = await Create(
+            null, RocmCompilerMode.Auto, null,
+            _ => remote, (_, _) => Local(),
+            allowLocal: true, localHipAvailable: false);
+
+        Assert.Same(remote, routes.Routes[CompilationTarget.Hip]);
+    }
+
     private static Task<CompositeCompilerManager> Create(
         IReadOnlyList<Uri>? urls,
         RocmCompilerMode? mode,
         string? hipccPath,
         Func<string, RemoteCompilerManager> getRemote,
         Func<string?, bool, CompilerManager> getLocal,
-        Func<string, string?>? getEnvironment = null) =>
-        CompilerManagerFactory.CreateCoreAsync(
-            urls, allowLocal: false, CancellationToken.None, mode, hipccPath,
-            getRemote, getLocal, getEnvironment ?? (_ => null));
+        Func<string, string?>? getEnvironment = null,
+        bool allowLocal = false,
+        bool? localHipAvailable = null)
+    {
+        Func<CompilerManager, bool>? availability = localHipAvailable is { } available
+            ? _ => available
+            : null;
+        return CompilerManagerFactory.CreateCoreAsync(
+            urls, allowLocal, CancellationToken.None, mode, hipccPath,
+            getRemote, getLocal, getEnvironment ?? (_ => null), availability);
+    }
 
     private static CompilerManager Local() => new(new CompilerOptions
     {
