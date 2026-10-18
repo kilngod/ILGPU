@@ -250,9 +250,8 @@ static class Program
         // not synchronize writes across threads in the same group and the
         // tiled kernel produces incorrect results. To compare against the
         // expected output, build with a GPU backend
-        // (`-p:ILGPUBackend=Metal|Cuda|ROCm|OpenCL`); with the default
-        // `-p:ILGPUBackend=CPU` the tiled timing is still reported but the
-        // output is not verified.
+        // (`-p:ILGPUBackend=Metal|Cuda|ROCm|OpenCL`); with a CPU backend the
+        // tiled timing is still reported but the output is not verified.
         if (m % Kernels.TileSize == 0
             && ka % Kernels.TileSize == 0
             && n % Kernels.TileSize == 0)

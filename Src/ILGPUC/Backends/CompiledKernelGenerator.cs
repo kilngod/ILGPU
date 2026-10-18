@@ -181,15 +181,22 @@ sealed class CompiledKernelGenerator : DisposeBase
         EmitHeader();
 
         // Emit class declaration
+        var implementsKernelKind =
+            _compiledKernelEmitter.AcceleratorType == AcceleratorType.CPU;
         WriteLine($"internal sealed class {className} : " +
-            $"{_compiledKernelEmitter.BaseClassName}, ICompiledKernelKind");
+            $"{_compiledKernelEmitter.BaseClassName}" +
+            (implementsKernelKind ? ", ICompiledKernelKind" : string.Empty));
         OpenScope();
 
-        // 1. GeneralAcceleratorType (ICompiledKernelKind)
-        var accelType = _compiledKernelEmitter.AcceleratorType;
-        WriteLine($"public static AcceleratorType GeneralAcceleratorType => " +
-            $"AcceleratorType.{accelType};");
-        WriteLine();
+        // CPUCompiledKernel does not implement ICompiledKernelKind itself.
+        // Other backend base classes already provide this static member.
+        if (implementsKernelKind)
+        {
+            var accelType = _compiledKernelEmitter.AcceleratorType;
+            WriteLine("public static AcceleratorType GeneralAcceleratorType => " +
+                $"AcceleratorType.{accelType};");
+            WriteLine();
+        }
 
         // 2. Kernel GUID
         WriteLine($"public static readonly Guid KernelId = " +

@@ -18,12 +18,12 @@ when no local ROCm device is available. Compiler discovery normally finds
 `hipcc`; set `ILGPU_HIPCC_PATH` only for a custom install that discovery
 cannot locate.
 
-Sample projects share `Samples/Directory.Build.props`. Selecting
-`ILGPUBackend=ROCm` there enables native compilation and Auto compiler
-routing. Set `ILGPU_ROCM_ARCH` in the build environment to pass an explicit
-architecture. In Rider, this lets you select ROCm with one MSBuild property
-instead of repeating the compile and compiler-mode properties for each
-sample. Compiler routing is a build-time choice. Docker compiler services
+Sample projects share `Samples/Directory.Build.props`, which defaults their
+backend to ROCm on the `rocm_fixes` branch. That setting enables native
+compilation and Auto compiler routing without a per-project environment
+variable. Set `ILGPUBackend` as an MSBuild property only to override the
+solution default; set `ILGPU_ROCM_ARCH` in the build environment to pass an
+explicit architecture. Compiler routing is a build-time choice. Docker compiler services
 compile kernels remotely; they are not listed as execution devices. After
 compilation, the sample prompts for a device available to its process. To run
 on a remote datacenter GPU, the sample itself must run on a host or GPU-enabled
@@ -53,13 +53,13 @@ six samples now use consumer-side expansion so their launches are visible to
 ILGPUC. `-IncludeKnownLauncherFailures` remains available for investigating
 future known launcher failures; none are currently listed.
 
-In Rider, set `ILGPUBackend=ROCm` for a sample project. The shared sample
-build file enables native compilation and Auto compiler routing. The build
+In Rider, build the Samples solution with its shared defaults. The shared
+sample build file enables native compilation and Auto compiler routing. The build
 automatically targets every local ROCm device architecture; no architecture
 property is needed on a machine with visible ROCm devices. At runtime, the
-sample prompts for an accelerator. Set `ILGPU_SAMPLE_DEVICE=ROCm` to run a
-ROCm-specific matrix noninteractively; otherwise the menu offers all
-accelerators discovered by ILGPU.
+sample prompt offers locally available accelerators for which the sample has
+compiled kernels. Set `ILGPU_SAMPLE_DEVICE=ROCm` to run a ROCm-specific matrix
+noninteractively.
 
 On Linux, install the tested ROCm 7.2.4 SDK and host toolchain and set a
 writable `TMPDIR`. The build reads architectures from the HIP runtime. The

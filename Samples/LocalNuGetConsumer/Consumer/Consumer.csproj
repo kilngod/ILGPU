@@ -17,8 +17,8 @@
     <RestorePackagesPath>$(MSBuildThisFileDirectory)packages/</RestorePackagesPath>
     <RestoreNoCache>true</RestoreNoCache>
 
-    <!-- ILGPUBackend is normally inherited from Samples/Directory.Build.props
-         (default "CPU") and that's fine here. Leave it alone. -->
+    <!-- ILGPUBackend is inherited from Samples/Directory.Build.props
+         (default "ROCm" on rocm_fixes). -->
 
     <!-- IMPORTANT: blank out $(ILGPUCompilerTool) to undo Samples/
          Directory.Build.props's local-DLL override. Other samples in this

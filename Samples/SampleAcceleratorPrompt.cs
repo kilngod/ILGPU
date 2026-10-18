@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------------------
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -41,14 +42,34 @@ internal static class SampleAcceleratorPrompt
             preferCPU: false,
             matchingDevicesOnly: false).ToList();
 
-        // Include CPU as the final menu option even when a GPU is available.
-        foreach (var device in context.Devices)
+        var compiledAcceleratorTypes = GetCompiledAcceleratorTypes();
+        if (compiledAcceleratorTypes.Count > 0)
         {
-            if (device.AcceleratorType == AcceleratorType.CPU &&
-                !devices.Any(candidate =>
-                    candidate.AcceleratorType == AcceleratorType.CPU))
+            devices = devices
+                .Where(device => compiledAcceleratorTypes.Contains(
+                    device.AcceleratorType))
+                .ToList();
+            if (devices.Count == 0)
             {
-                devices.Add(device);
+                throw new InvalidOperationException(
+                    "No available accelerator matches the kernels compiled " +
+                    $"for this sample ({string.Join(", ", compiledAcceleratorTypes)}). " +
+                    "Rebuild the sample with ILGPUBackend set to the desired backend.");
+            }
+        }
+
+        // Include CPU as the final menu option even when a GPU is available.
+        if (compiledAcceleratorTypes.Count == 0 ||
+            compiledAcceleratorTypes.Contains(AcceleratorType.CPU))
+        {
+            foreach (var device in context.Devices)
+            {
+                if (device.AcceleratorType == AcceleratorType.CPU &&
+                    !devices.Any(candidate =>
+                        candidate.AcceleratorType == AcceleratorType.CPU))
+                {
+                    devices.Add(device);
+                }
             }
         }
 
@@ -90,7 +111,7 @@ internal static class SampleAcceleratorPrompt
         }
 
         var selectedIndex = 0;
-        Console.WriteLine("Available accelerators:");
+        Console.WriteLine("Available accelerators for this sample:");
         for (int i = 0; i < devices.Count; ++i)
         {
             var device = devices[i];
@@ -152,6 +173,25 @@ internal static class SampleAcceleratorPrompt
             $" (sm_{architecture.Major}{architecture.Minor})",
         _ => string.Empty,
     };
+
+    private static HashSet<AcceleratorType> GetCompiledAcceleratorTypes()
+    {
+        var acceleratorTypes = new HashSet<AcceleratorType>();
+        if (Context.NumCompiledKernels == 0)
+            return acceleratorTypes;
+
+        foreach (var acceleratorType in Enum.GetValues<AcceleratorType>())
+        {
+            if (acceleratorType != AcceleratorType.None &&
+                acceleratorType != AcceleratorType.NumAcceleratorTypes &&
+                Context.GetNumCompiledKernels(acceleratorType) > 0)
+            {
+                acceleratorTypes.Add(acceleratorType);
+            }
+        }
+
+        return acceleratorTypes;
+    }
 
     private static int ReadLineSelection(int deviceCount)
     {

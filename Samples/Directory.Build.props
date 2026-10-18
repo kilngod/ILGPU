@@ -11,11 +11,12 @@
     <ILGPUBinDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../Bin/$(Configuration)/net10.0'))</ILGPUBinDir>
 
     <!-- Backend(s) to compile for. Semicolon-delimited for multi-backend.
-         Override: dotnet build -p:ILGPUBackend=Metal
+         Default to ROCm for the rocm_fixes branch.
+         Override: dotnet build -p:ILGPUBackend=CPU
          Multi:    dotnet build -p:ILGPUBackend="CPU;Metal" -->
     <!-- Multi-backend (e.g. CPU;Metal) requires codegen fix for unique class names.
-         Default to CPU for now; override with: dotnet build -p:ILGPUBackend=Metal -->
-    <ILGPUBackend Condition="'$(ILGPUBackend)' == ''">CPU</ILGPUBackend>
+         Override with: dotnet build -p:ILGPUBackend=Metal -->
+    <ILGPUBackend Condition="'$(ILGPUBackend)' == ''">ROCm</ILGPUBackend>
 
     <!-- Selecting ROCm enables native HIP compilation for sample projects.
          ILGPUC auto-detects all distinct architectures from local ROCm devices.
