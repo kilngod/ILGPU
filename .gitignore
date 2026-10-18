@@ -7,8 +7,8 @@
 *.userosscache
 *.sln.docstates
 
-# Keep local Codex build and test output out of the repository.
-/codex/temp/
+# Keep local Codex notes, probes, and build/test output out of the repository.
+/codex/
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs

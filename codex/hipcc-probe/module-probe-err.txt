@@ -1,3 +1,0 @@
-Fatal error.
-0xC0000005
-   at Program.<Main>$(System.String[])

@@ -1,1 +1,0 @@
-hipInit: 0

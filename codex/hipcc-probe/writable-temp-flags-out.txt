@@ -1,4 +1,0 @@
-hipInit=0
-hipGetDeviceCount=0 count=1
-hipStreamCreateWithFlags=0
-hipStreamDestroy=0
