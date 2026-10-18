@@ -159,6 +159,55 @@ cases passed with no ROCm skips. The 1,047 skips were for unavailable CUDA,
 Metal, and OpenCL backends. Other HIP 7.x minor releases and GPUs have not
 been validated. Linux host validation is tracked separately.
 
+### Linux: compile ROCm kernels with the local HIP SDK
+
+The Linux path was validated on 2026-10-17 on Ubuntu 24.04.4 LTS (x86_64), kernel
+`6.8.0-147-generic`, .NET SDK `10.0.111`, ROCm `7.2.4`, and the Radeon RX
+7900 XTX (`gfx1100`). `hipcc --version` reports HIP `7.2.53211` and AMD clang
+22.0.0git. The system compiler resolves as `/usr/bin/hipcc` to the installed
+ROCm SDK; with `/usr/bin` removed from `PATH`, discovery selected
+`/opt/rocm/bin/hipcc`. The host uses the in-kernel `amdgpu` driver. This is
+one validated Linux host configuration, not a compatibility claim for every
+ROCm 7.x release, kernel, GPU, or driver. AMD SMI 26.2.2 reported ROCm
+7.2.4; the module vermagic was
+`6.8.0-147-generic SMP preempt mod_unload modversions`.
+
+From the repository root, set a writable temporary directory and inspect the
+selected compiler:
+
+```sh
+mkdir -p codex/temp
+export TMPDIR="$PWD/codex/temp"
+export ILGPU_ROCM_COMPILER=local
+export ILGPU_ROCM_ARCH=gfx1100
+dotnet Bin/Debug/net10.0/ILGPUC.dll probe-services --rocm-compiler local
+```
+
+The probe reported `/usr/bin/hipcc`, HIP `7.2.53211-97f5574fe2`. To override
+discovery, set `ILGPU_HIPCC_PATH=/path/to/hipcc`, `HIP_PATH`, or `ROCM_PATH`.
+On Linux, the runtime loads `libamdhip64.so`; this host resolved it from
+`/opt/rocm-7.2.4/lib` (SONAME `libamdhip64.so.7`).
+
+Build and run a sample with native ROCm compilation:
+
+```sh
+dotnet build Samples/SimpleKernel/SimpleKernel.csproj \
+  -p:Configuration=Debug -p:ILGPUBackend=ROCm -p:ILGPUCompile=true \
+  -p:ILGPURocmCompiler=local \
+  '-p:ILGPUBackendOptions=--rocm-arch gfx1100'
+ILGPU_SAMPLE_DEVICE=ROCm \
+  dotnet Samples/SimpleKernel/bin/Debug/net10.0/SimpleKernel.dll
+```
+
+The sample selected the RX 7900 XTX, loaded and launched the generated
+`gfx1100` code object, and verified all 1,024 results. The `ILGPUC.Tests`
+suite passed 6,110 tests, skipped 1,047, and had 0 failures on this Linux
+host. The eligible sample matrix passed 30, skipped 3 for documented sample
+limitations, and excluded 6 non-kernel/separate-workflow projects. See
+`Samples/ROCm.md` and `Src/ILGPUC.Tests/tests.md` for detailed results and
+commands. Remote compiler routing was covered by focused routing tests and
+an in-process mock integration test; this sample matrix used local HIP.
+
 ### Remote compiler service and Docker route
 
 The existing remote service route remains available. Set

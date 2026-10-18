@@ -2,11 +2,10 @@
 
 ## Windows hip/ROCm Support Outline
 
-**Status:** Steps 1–6 implemented; Steps 7–8 validated on this Windows
-7.2/gfx1201 fixture for the main kernel path, with broader Step 7 API
-coverage outstanding; Step 9 checks implemented and run on Windows, with
-live Linux execution pending; Step 10 documented for the validated Windows
-path; Steps 11–12 planned.  
+**Status:** Windows steps 1–6 implemented; Steps 7–8 validated for the main
+kernel path, with broader Step 7 API coverage outstanding; Windows routing,
+documentation, unit-suite, and sample-matrix results are recorded below.
+Linux Steps 1–10 are complete in the separate Linux outline.
 **Goal:** Let ILGPUC compile ROCm kernels with the Windows HIP SDK installed on
 the same machine, then validate that ILGPU can load and execute those kernels
 through the Windows HIP runtime. Keep the existing remote compiler route
@@ -119,8 +118,8 @@ available for other hosts and backends.
    that blocker and keep the scope at compile-only until a compatible
    output route is established.
 
-9. **Cover routing and compatibility (Windows checks complete; live Linux
-   run pending).** Add focused checks for Windows
+9. **Cover routing and compatibility (Windows checks complete; Linux checks
+   complete in its outline).** Add focused checks for Windows
    SDK discovery, explicit path precedence, multiple 7.x installations,
    missing or incompatible SDK diagnostics, and the local-versus-remote
    selection rule. Check that Linux's `/opt/rocm/bin/hipcc` and existing
@@ -372,8 +371,9 @@ HIP compilation now retries in a private working-directory temp folder
 when the system temp denies file renaming, and points HIP/COMGR at the
 selected folder. A direct compile succeeded in the restricted sandbox
 with the system temp rename denied; the private folder was cleaned up.
-The Linux AMD host is not configured yet, so its tests and counts remain
-deferred. Other HIP SDK versions and AMD GPUs have not been validated.
+The Linux test suite and its per-layer counts are now recorded in the
+separate Linux HIP/ROCm outline. Other HIP SDK versions and AMD GPUs remain
+unvalidated.
 
 ### Step 12: Windows sample matrix (2026-10-16)
 
@@ -408,10 +408,10 @@ initially skipped the six known unhandled algorithm exceptions unless
 `-IncludeKnownLauncherFailures` is specified. The original failures are
 preserved in `codex/temp/rocm-samples-final/results.json`.
 
-The Linux AMD host is not configured, so its matrix remains pending. A live
-remote-compiler sample build is also pending; this run validated the local
-compiler route and local GPU execution only. The sample suite is not yet
-fully validated because seven failures and three skips remain.
+This paragraph records the earlier Windows matrix before the follow-up fixes;
+the current Windows result is given below. A live remote-compiler sample
+build remains pending. Linux local-compiler and GPU results are recorded in
+the separate Linux HIP/ROCm outline below.
 
 Follow-up: `ILGPUC` now expands simple `Initializer`, `Sequencer`, and
 `Transformer` library calls into named kernel methods in the consumer's
@@ -437,15 +437,17 @@ integers with negatives and duplicates, checked against CPU sorting in both
 directions. ILGPUC expands dense radix calls into stable one-bit passes
 using classification, scan, and scatter kernels. The sample runner has no
 remaining known-launcher skips. Other radix overloads, performance, CUDA
-execution, and the Linux host are not yet validated. The initial matrix
-counts above remain historical.
+execution are not validated by this Windows run. Linux ROCm execution is
+recorded in the separate Linux outline below. The initial matrix counts above
+remain historical.
 
 The full Windows ROCm sample matrix was rebuilt after these fixes. Its
 current result is 30 passed, 0 failed, 3 skipped, and 6 excluded across 39
 projects (`codex/temp/rocm-matrix-current/results.json`). The skips are
 `MemoryBufferStrides` and `SimpleWriteLine` (GPU `Interop.WriteLine` output
 is unavailable with the default build), plus `SimpleDebugAssert`
-(assertions disabled). Linux and CUDA execution remain pending.
+(assertions disabled). Linux execution is recorded in its separate outline;
+CUDA GPU execution remains pending.
 
 ### Completion criteria
 
@@ -458,3 +460,319 @@ is unavailable with the default build), plus `SimpleDebugAssert`
   supported Windows AMD GPU.
 - Existing Linux local compilation and remote service selection remain
   available, and documentation states any unverified platform or GPU cases.
+
+## Linux HIP/ROCm Support Outline
+
+**Status:** Complete for the tested Linux host. Steps 1–10 are complete: Linux baseline, ROCm toolchain,
+compiler routing, native compilation, runtime loading/ABI, end-to-end kernel
+execution, focused routing checks, layered/full test suites, and the eligible
+sample matrix, with per-host configuration and outcomes documented. ROCm
+7.2.4 reports the RX 7900 XTX as `gfx1100`; other Linux SDK/GPU combinations
+and remote-compiler sample execution remain unvalidated.
+**Goal:** Use the ROCm SDK installed directly on this Linux machine to compile
+ILGPU HIP kernels and run them on its AMD GPU. Keep the existing remote
+compiler route available and preserve Windows behavior.
+
+### Current state and design
+
+- The host is Ubuntu 24.04.4 LTS, x86_64, with kernel
+  `6.8.0-147-generic`; .NET SDK `10.0.111` is installed.
+- AMD's ROCm 7.2 Linux system-requirements page lists Ubuntu 24.04.4 with
+  kernels 6.8 (GA) or 6.17 (HWE); this host now runs the listed 6.8 GA
+  kernel. AMD also notes that multi-GPU systems can require `iommu=pt`.
+- PCI inventory reports a Sapphire Pulse Radeon RX 7900 XTX
+  (`1002:744c`, Navi 31) using the `amdgpu` kernel driver. The Ryzen 9 9900X
+  integrated graphics (`1002:13c0`) no longer appears after the user disabled
+  it in BIOS. Live `rocminfo` output lists one GPU,
+  `Radeon RX 7900 XTX`, architecture `gfx1100`; the CPU agent appears as a
+  separate HSA agent. AMD's ROCm guidance says to disable AMD integrated
+  graphics in BIOS before using ROCm because enumerating an IGP may destabilize
+  the runtime, even if `HIP_VISIBLE_DEVICES` omits it.
+- The user initially described the card as “9700XTX”; the PCI inventory
+  identifies a Radeon RX 7900 XTX. The user confirmed this is the intended
+  accelerator, and ROCm reports it as `gfx1100`.
+- ROCm 7.2.4 is installed under `/opt/rocm-7.2.4`; `hipcc` and `rocminfo`
+  resolve through `/opt/rocm` to that installation. `hipcc --version` reports
+  HIP 7.2.53211 and AMD clang 22.0.0git (ROCm 7.2.4). `libamdhip64.so` and
+  `libhsa-runtime64.so` resolve from `/opt/rocm-7.2.4/lib`. `hipconfig --full`
+  reports HIP platform `amd`, compiler `clang`, runtime `rocclr`, and ROCm path
+  `/opt/rocm-7.2.4`. `HIP_PATH`, `ROCM_PATH`, `ILGPU_HIPCC_PATH`,
+  `ILGPU_ROCM_COMPILER`, `ILGPU_ROCM_ARCH`, and `LD_LIBRARY_PATH` are unset in
+  the captured shell environment; record this separately from `hipconfig`'s
+  computed defaults.
+- The codebase already has a Linux compiler fallback at
+  `/opt/rocm/bin/hipcc`; `HipccDiscovery` also checks explicit paths,
+  `ILGPU_HIPCC_PATH`, `HIP_PATH`, `ROCM_PATH`, and `PATH`. Local HIP routing
+  via `ILGPU_ROCM_COMPILER=local` is implemented. Linux selection is now
+  verified: the default shell resolves `/usr/bin/hipcc`, which links to the
+  installed ROCm 7.2.4 compiler.
+- Linux runtime imports currently use `amdhip64`. Verify the SDK's soname,
+  linker-cache visibility, exported symbols, and ABI before changing runtime
+  bindings. Do not carry the Windows `amdhip64_7.dll` mapping into Linux.
+- Do not assume an architecture string from the product name. Query the live
+  ROCm device and use its reported `gfx` architecture for native builds and
+  tests.
+
+### Ordered implementation and validation steps
+
+1. **Record the Linux baseline (complete).** Capture Ubuntu release, kernel, CPU
+   architecture, .NET SDK, GPU PCI IDs/model, kernel driver, active display
+   device, and GPU selection policy. Once ROCm is present, record the exact
+   SDK/compiler/driver versions, `rocminfo` architecture and device count,
+   `hipcc --version`, environment variables, and compiler/runtime library
+   paths. Keep observations separate from code defaults.
+
+2*. **Verify the installed Linux ROCm toolchain (complete).** AMD's
+   [ROCm 7.2.4 system requirements](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-7.2.4/reference/system-requirements.html)
+   list Ubuntu 24.04.4 on kernel 6.8 GA and the RX 7900 XTX as supported;
+   the live device reports `gfx1100`. The installation is the native APT
+   package method: `/etc/apt/sources.list.d/rocm.list` points to AMD's 7.2.4
+   ROCm and graphics repositories, and `apt-cache policy` shows AMD repo
+   priority 600. This matches AMD's
+   [Ubuntu installation instructions](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-7.2.4/install/install-methods/package-manager/package-manager-ubuntu.html).
+   Installed package metadata reports `rocm` and `rocm-core`
+   `7.2.4.70204-93~24.04`, `hip-runtime-amd` `7.2.53211.70204-93~24.04`,
+   `hipcc` `1.1.1.70204-93~24.04`, and `rocminfo`
+   `1.0.0.70204-93~24.04`. `hipcc --version` reports HIP 7.2.53211 and AMD
+   clang 22.0.0git from ROCm 7.2.4. Live `rocminfo` reports the Ryzen 9 9900X
+   CPU and one GPU, the Radeon RX 7900 XTX at `gfx1100`. AMD SMI reports
+   ROCm 7.2.4 and the in-kernel `amdgpu` driver on kernel
+   `6.8.0-147-generic`. The Linux RuntimeProbe returned success for
+   `hipInit`, stream creation, and stream destruction, and ILGPU discovery
+   found that same GPU. This verifies the installed host runtime; generated
+   ILGPU kernel compilation and execution remain later gates.
+
+3. **Verify compiler selection and routing (complete).** Built ILGPUC in
+   Debug with zero warnings/errors. `probe-services --rocm-compiler local`
+   reports HIP `local (available)`, `/usr/bin/hipcc`, and HIP
+   `7.2.53211-97f5574fe2`. Live checks selected the path supplied via
+   `--hipcc-path`, `ILGPU_HIPCC_PATH`, `HIP_PATH`, and `ROCM_PATH` in turn;
+   with those variables unset, `PATH` selected `/usr/bin/hipcc`, and with
+   `PATH` excluding `/usr/bin`, Linux's `/opt/rocm/bin/hipcc` fallback was
+   selected. Each resolved to the installed HIP 7.2.53211 compiler. The
+   `probe-services --rocm-compiler auto` check fell back locally because no
+   remote compiler service is available on this host. The focused
+   `HipccDiscoveryTests` and `RocmRoutingTests` passed (12/12): they cover
+   explicit path precedence, `ILGPU_ROCM_COMPILER`, local HIP overriding a
+   configured remote HIP route while leaving CUDA remote, explicit `auto`,
+   and the Docker-default remote route. No live remote service is configured;
+   remote-routing behavior is covered by these routing tests.
+
+4. **Prove native compilation (complete).** Built `Samples/SimpleKernel` with
+   ILGPU's kernel precompile target, using `ILGPUBackend=ROCm`,
+   `ILGPUCompile=true`, `ILGPURocmCompiler=local`, and
+   `--rocm-arch gfx1100`. The generated kernel source was passed to
+   `/usr/bin/hipcc` with `--genco`, `-O2`, and
+   `--offload-arch=gfx1100`; ROCm supplied its configured HIP headers and
+   include paths. HIP/COMGR wrote to a writable
+   `/tmp/gpu-compilation-<id>` directory, then ILGPU validated the returned
+   binary as AMDGPU ELF and embedded it in
+   `Samples/SimpleKernel/obj/Debug/net10.0/ilgpu/generated/MyKernel_CompiledKernel.cs`.
+   The sample build succeeded with zero errors (one existing generated-code
+   hiding warning). Decoding that embedded binary produced a 5,040-byte ELF64
+   AMDGPU shared object: `readelf` reports AMD HSA ABI, AMD GPU machine, and
+   ELF flags `gfx1100`; its metadata contains
+   `amdgcn-amd-amdhsa--gfx1100` and no `gfx1201`. The compiler's `--genco`
+   output on this ROCm 7.2.4 Linux installation was a Clang offload bundle,
+   so Linux also needed bundle-member extraction. That first exposed a
+   bundler lookup bug: `/usr/bin/hipcc` is a symlink and the bundler lives in
+   the resolved ROCm installation's `llvm/bin`, not beside the symlink. The
+   compiler now resolves the hipcc symlink and looks in the ROCm LLVM bin
+   locations; the same sample then compiled successfully. Raw ELF output
+   still bypasses extraction and is validated directly. The Windows extraction
+   path remains platform-specific only in its bundler executable suffix. This
+   proves native compilation and code-object architecture; it does not yet
+   prove loading or launching the kernel on the GPU (step 6).
+
+5. **Audit Linux runtime loading and ABI (complete).** No Linux binding change
+   was indicated. With HIP/ROCm environment overrides unset, the system loader
+   resolves `libamdhip64.so` to `/opt/rocm-7.2.4/lib/libamdhip64.so`; its SONAME
+   is `libamdhip64.so.7`, and `ldd` resolved all listed dependencies, including
+   ROCm's `libhsa-runtime64.so.1`. `ROCmAPI.xml` uses `amdhip64` for Linux,
+   while Windows retains `amdhip64_7`. All 28 imported function names in the
+   XML are exported by the installed library. The Linux `RuntimeProbe` loaded
+   ILGPU's actual ROCm API (`API supported: True`), and `ROCmDevice.GetDevices`
+   found exactly one Radeon RX 7900 XTX at `gfx1100`. It exercised the imported
+   `hipInit`, device-count, `hipDeviceGetName`, and versioned device-properties
+   calls. The direct HIP probe also returned success for `hipInit`, stream
+   creation, and stream destruction when run with GPU device access.
+
+   Compared the installed `/opt/rocm/include/hip/hip_runtime_api.h` definition
+   of `hipDeviceProp_tR0600` against ILGPU: both report size 1,472 bytes,
+   `gcnArchName` offset 1,160, and `asicRevision` offset 1,468. ROCm's header
+   also reports 8-byte `hipStream_t` and `size_t`, 4-byte `hipError_t` and
+   device-attribute enum, matching ILGPU's `IntPtr`/`UIntPtr`, `ROCmError`, and
+   `HipDeviceAttributeKind` mappings on this x86_64 host. The imported HIP API
+   uses the platform C ABI; successful calls through ILGPU's generated
+   `LibraryImport` bindings validate the Linux calling convention for these
+   exercised signatures. The audit's checks were limited to discovery,
+   properties, and stream creation/destruction; step 6 below records the
+   separate end-to-end allocation/copy/module/kernel run.
+
+6. **Pass an end-to-end kernel gate (complete).** Rebuilt
+   `Samples/SimpleKernel/SimpleKernel.csproj` with
+   `ILGPUBackend=ROCm`, `ILGPUCompile=true`,
+   `ILGPURocmCompiler=local`, and `--rocm-arch gfx1100`, then ran it with
+   `ILGPU_SAMPLE_DEVICE=ROCm` and GPU device access. It selected the Radeon RX
+   7900 XTX, loaded the compiled `gfx1100` code object, allocated a device
+   buffer, copied initialized host data to the GPU, launched `MyKernel`,
+   synchronized, copied results back, and compared every element with
+   `index + 42`. It printed `Verified all 1024 kernel results.` and exited
+   successfully. The sample now throws on any mismatch so the gate cannot
+   silently pass with incorrect output. Its `using` scopes disposed the buffer,
+   accelerator, and context, exercising associated stream and loaded-kernel
+   cleanup. The build had zero errors and one existing generated-code warning
+   (`GeneralAcceleratorType` hides an inherited member). This passes the
+   focused native compilation plus execution gate. The broader test and
+   sample coverage was completed in steps 7–9 below; remote compiler sample
+   execution and other Linux SDK/GPU combinations remain unvalidated.
+
+7. **Run focused routing and compatibility checks (complete).** Built and
+   ran the `HipccDiscoveryTests`, `RocmRoutingTests`, and
+   `RemoteCompilerIntegrationTests` on Linux with
+   `--blame-hang-timeout 360s`: 15 passed, 0 failed, 0 skipped. The remote
+   integration cases exercise the service protocol against the in-process
+   mock service; no external remote compiler service is configured on this
+   host. `probe-services --rocm-compiler local` and
+   `probe-services --hipcc-path /usr/bin/hipcc` both selected local HIP with
+   `/usr/bin/hipcc`, reporting HIP `7.2.53211-97f5574fe2`. With `PATH` set to
+   `/usr/local/sbin:/usr/local/bin:/usr/sbin:/sbin` (excluding `/usr/bin` and
+   `/bin`) and HIP/ROCm override variables unset, the Linux fallback selected
+   `/opt/rocm/bin/hipcc` and reported the same HIP version. `probe-services
+   --rocm-compiler auto` also resolved HIP locally because no remote service
+   was available. The routing tests explicitly verify that selecting local
+   HIP leaves an explicitly configured CUDA route remote, and exercise
+   explicit `auto`, environment precedence, and fallback behavior. Other
+   backends remain routed locally in the live probe because no service URLs
+   are configured; CUDA, Metal, and OpenCL compiler availability is absent on
+   this host. The sandbox initially blocked MSBuild named pipes and the test
+   runner loopback listener; using single-node MSBuild and running VSTest with
+   host access allowed the complete focused set to pass.
+
+8. **Run the ROCm test suite by layer, then in full (complete).** Ran with
+   writable `TMPDIR=/tmp/ilgpu-rocm-test-tmp`,
+   `ILGPU_ROCM_COMPILER=local`, `ILGPU_ROCM_ARCH=gfx1100`, .NET SDK
+   `10.0.111`, ROCm `7.2.4`, HIP `7.2.53211`, and the physical Radeon RX 7900
+   XTX (`gfx1100`). Every invocation used
+   `--blame-hang-timeout 360s -m:1`; test execution needed host access for
+   VSTest's loopback communication. `Src/CLAUDE.md` also specifies the
+   360-second hang timeout. Layer results (passed / skipped / failed):
+
+   | Layer / filter | Passed | Skipped | Failed |
+   | --- | ---: | ---: | ---: |
+   | IR snapshots (`FullyQualifiedName~IRTests`) | 3,942 | 0 | 0 |
+   | Backend tests, combined (`FullyQualifiedName~BackendTests`) | 1,737 | 508 | 0 |
+   | Source generation (`FullyQualifiedName~BackendTests.SourceGeneration`) | 1,572 | 28 | 0 |
+   | Native compilation (`FullyQualifiedName~BackendTests.NativeCompilation`) | 160 | 480 | 0 |
+   | GPU execution (`FullyQualifiedName~ExecutionTests`) | 352 | 533 | 0 |
+   | MSBuild integration (`FullyQualifiedName~IntegrationTests`) | 19 | 5 | 0 |
+   | Non-kernel tests (`FullyQualifiedName~NonKernelTests`) | 53 | 0 | 0 |
+   | Performance regressions (`FullyQualifiedName~PerfTests`) | 4 | 1 | 0 |
+
+   Full suite command:
+   `TMPDIR=/tmp/ilgpu-rocm-test-tmp ILGPU_ROCM_COMPILER=local ILGPU_ROCM_ARCH=gfx1100 dotnet test Src/ILGPUC.Tests/ILGPUC.Tests.csproj --configuration Debug --no-build --no-restore --blame-hang-timeout 360s -m:1 --logger 'trx;LogFileName=full-rocm-suite.trx'`.
+   Result: 6,110 passed, 1,047 skipped, 0 failed (7,157 total). The full
+   TRX result is `Src/ILGPUC.Tests/TestResults/full-rocm-suite.trx`; the raw
+   per-layer logs are in `/tmp/ilgpu-rocm-suite-logs/`. Parsing the full TRX
+   shows 1,107 test cases with `ROCm` in their test names passed, with no
+   ROCm-named failures or skips. Thus the ROCm execution tests ran against the
+   available local GPU rather than being skipped.
+
+   All 1,047 full-suite skip reasons were accounted for: unavailable CUDA
+   compiler (177 “not available on this machine”, 160 “not available”);
+   unavailable OpenCL compiler (174 and 158 with those same messages);
+   unavailable Metal compiler (169 and 148); unsupported backend features
+   (40 Metal Float64, 8 OpenCL Float64 atomics, 6 Metal Float64 plus Float64
+   atomics, 2 Metal Float64 atomics, 1 OpenCL Int64 atomic min/max, 1 Metal
+   Int64 atomic min/max); 2 CPU grouped-grid modeling limitations; and 1
+   opt-in compile benchmark (`ILGPU_RUN_BENCH=1`). No unexplained ROCm skips
+   or failures were recorded. Layer invocations were:
+   `dotnet test Src/ILGPUC.Tests/ILGPUC.Tests.csproj --configuration Debug
+   --no-build --no-restore --filter <filter> --blame-hang-timeout 360s -m:1`
+   with the same environment variables above for each filter.
+
+9. **Build and run eligible samples (complete 2026-10-17).** Built and ran
+   the Linux matrix on ROCm 7.2.4 / HIP 7.2.53211, .NET SDK 10.0.111, and the
+   Radeon RX 7900 XTX (`gfx1100`). Each eligible project was built with
+   `ILGPUBackend=ROCm`, `ILGPUCompile=true`,
+   `ILGPURocmCompiler=local`, and `ILGPUBackendOptions=--rocm-arch gfx1100`,
+   then run with `ILGPU_SAMPLE_DEVICE=ROCm`. Results: **30 passed, 0 failed,
+   3 skipped, 6 excluded** across 39 projects. The 30 passes selected the
+   physical RX 7900 XTX and passed their applicable sample-specific output
+   and numeric checks; `SimpleKernel` verified all 1,024 results. All sample
+   processes exited successfully. Sample resource cleanup follows their
+   scoped `using` patterns for buffers, accelerators, and contexts.
+
+   The three intentional skips are `MemoryBufferStrides` (GPU
+   `Interop.WriteLine` output is absent with default IO), `SimpleWriteLine`
+   (GPU output is absent and enabling IO currently fails IR rewriting), and
+   `SimpleDebugAssert` (the sample asserts on nonzero lanes while assertions
+   are disabled). Six exclusions: `DeviceInfo` (enumeration only), `Empty`
+   and `EmptyAlgorithms` (context construction only), `SimpleViews` (CPU-only
+   direct view indexing), `KernelLibraryAttribute/MyKernelLib` (dependency
+   covered by its ROCm consumer), and `LocalNuGetConsumer/Consumer` (separate
+   local-package validation workflow). The kernel-library consumer was
+   built and ran successfully.
+
+   PowerShell 7 is not installed on this Linux host, so the checked-in
+   runner's build and runtime settings were reproduced with a sequential
+   host-access runner. The PowerShell output validator was also corrected to
+   recognize `SimpleKernel`'s explicit `Verified all 1024 kernel results.`
+   success line rather than requiring the generic `Done.` marker. Per-project
+   build/run logs and machine-readable results are in
+   `codex/temp/rocm-samples/`; this is ignored build output. The runner used
+   implicit restore because most sample projects did not yet have assets
+   files. Remote compiler routing was not exercised; this matrix validates
+   local HIP compilation and execution on the GPU.
+
+10. **Document supported host configuration and outcome (complete
+    2026-10-17).** Updated `Src/ILGPUC/build/README.md`,
+    `Src/ILGPUC/PACKAGE.md`, `Src/ILGPUC.Tests/tests.md`, and `Samples/ROCm.md`
+    with the tested Ubuntu 24.04.4 / kernel 6.8.0-147 host, .NET 10.0.111,
+    ROCm 7.2.4 / HIP 7.2.53211, RX 7900 XTX (`gfx1100`), in-kernel `amdgpu`
+    driver, compiler discovery paths, local compiler/runtime selection,
+    build/run/test commands, and sample/test outcomes and skips. Windows
+    HIP SDK 7.2/gfx1201 validation remains described as a separate host. The
+    documentation limits the Linux claim to this tested configuration;
+    other Linux SDK/GPU combinations and remote-compiler sample execution
+    remain unvalidated.
+
+### Linux host baseline (2026-10-17)
+
+| Item | Observation |
+| --- | --- |
+| OS | Ubuntu 24.04.4 LTS (Noble Numbat), x86_64 |
+| Kernel | `6.8.0-147-generic` |
+| .NET SDK | `10.0.111` |
+| Discrete GPU | Sapphire Pulse Radeon RX 7900 XTX, Navi 31 (`1002:744c`), `amdgpu` driver |
+| CPU | AMD Ryzen 9 9900X; `hipconfig` reports host target `znver5` |
+| Driver version | In-kernel `amdgpu`; AMD SMI reports kernel `6.8.0-147-generic`; module vermagic is `6.8.0-147-generic SMP preempt mod_unload modversions` |
+| Additional AMD display device | Ryzen 9 9900X integrated GPU (`1002:13c0`) disabled in BIOS; absent from latest `lspci` output |
+| ROCm SDK | ROCm 7.2.4, installed under `/opt/rocm-7.2.4` |
+| Installation method | Native APT using AMD's `rocm/apt/7.2.4` and `graphics/7.2.4/ubuntu` Noble repositories; ROCm pin priority 600 |
+| Key package versions | `rocm`/`rocm-core` `7.2.4.70204-93~24.04`; `hip-runtime-amd` `7.2.53211.70204-93~24.04`; `hipcc` `1.1.1.70204-93~24.04`; `rocminfo` `1.0.0.70204-93~24.04` |
+| AMD SMI | Tool/library `26.2.2`; reports ROCm `7.2.4` |
+| HIP compiler | `hipcc` at `/opt/rocm-7.2.4/bin/hipcc`; HIP 7.2.53211; AMD clang 22.0.0git (ROCm 7.2.4) |
+| HIP runtime | `libamdhip64.so` at `/opt/rocm-7.2.4/lib`; HSA runtime at `/opt/rocm-7.2.4/lib/libhsa-runtime64.so` |
+| ROCm device query | Live `rocminfo` and `RuntimeProbe --discover-only`: one GPU, Radeon RX 7900 XTX, `gfx1100`; API supported; CPU is a separate agent |
+| GPU selection policy | Integrated GPU disabled in BIOS; select/use the sole ROCm GPU, the RX 7900 XTX (`gfx1100`) |
+| Active display output | RX 7900 XTX (`05:00.0`), DRM `card1`, DisplayPort `DP-1` reports `connected` in `/sys/class/drm` |
+| ROCm-related environment | `HSA_*`, `HIP_PATH`, `ROCM_PATH`, `ILGPU_HIPCC_PATH`, `ILGPU_ROCM_COMPILER`, `ILGPU_ROCM_ARCH`, and `LD_LIBRARY_PATH` unset in captured shell; `hipconfig` computes `/opt/rocm-7.2.4` |
+| Sample/probe inventory | `codex/hipcc-probe/runtime-smoke.cpp` is a portable HIP C++ runtime/stream probe. `RuntimeProbe` now selects the Windows or Linux HIP runtime library. Other probe artifacts include generated HIP source and compiled code objects. |
+| RuntimeProbe execution | Built successfully with zero warnings/errors. On Linux, `--stream-only` returned success for `hipInit`, stream creation, and stream destruction; `--discover-only` found one ROCm device (`gfx1100`). |
+| ILGPUC compiler routing | Built `ILGPUC` Debug with zero warnings/errors. Local probe selected HIP 7.2.53211; path-source checks covered CLI, `ILGPU_HIPCC_PATH`, `HIP_PATH`, `ROCM_PATH`, `PATH`, and the Linux `/opt/rocm/bin/hipcc` fallback. Focused discovery/routing tests passed 12/12. |
+| Probe execution boundary | The restricted workspace context lacks `/dev/kfd` and `/dev/dri`; running outside that sandbox succeeded. The bundled `device.hsaco` targets `gfx1201`, so the full module/memory probe was not run against this `gfx1100` GPU. |
+
+### Completion criteria
+
+- A supported ROCm SDK is installed directly on this Ubuntu host and
+  `hipcc` discovery selects it without Docker, WSL, or an HTTP compiler
+  service.
+- A generated ILGPU kernel compiles to a valid code object, loads through the
+  Linux HIP runtime, executes on the selected AMD GPU, and returns verified
+  results.
+- Linux runtime API/ABI and the relevant ROCm test layers pass with all
+  failures and skips explained. The sample matrix reports per-project
+  outcomes rather than treating a successful build as execution proof.
+- Documentation records this host's tested versions and keeps untested
+  Linux SDK/GPU combinations and remote-compiler behavior clearly scoped.

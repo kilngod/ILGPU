@@ -37,23 +37,80 @@ set `ILGPU_SAMPLE_DEVICE=ROCm` in its run/debug configuration. The generated
 `codex/rocm-tests.runsettings` is for test execution and provides the
 Windows compiler environment for the matrix script.
 
-On Linux, install HIP 7.x and the required host toolchain, set a writable
-`TMPDIR`, then run with the Linux AMD card's architecture:
+On Linux, install the tested ROCm 7.2.4 SDK and host toolchain, set a writable
+`TMPDIR`, and use the architecture reported by the HIP runtime. The validated
+host was validated on 2026-10-17: Ubuntu 24.04.4 LTS (x86_64), kernel
+`6.8.0-147-generic`, .NET SDK
+`10.0.111`, ROCm `7.2.4` / HIP `7.2.53211`, Radeon RX 7900 XTX (`gfx1100`),
+and the in-kernel `amdgpu` driver. `/usr/bin/hipcc` resolves to the installed
+ROCm SDK; ILGPU also found `/opt/rocm/bin/hipcc` when `/usr/bin` was removed
+from `PATH`. Other Linux SDK/GPU/kernel combinations have not been validated.
 
-```sh
-pwsh ./Src/scripts/Invoke-RocmSamples.ps1 -Architecture gfxXXXX -Rebuild
+Restore the sample projects first if they have not been restored, then run
+the matrix from the repository root:
+
+```bash
+mkdir -p codex/temp
+export TMPDIR="$PWD/codex/temp"
+export ILGPU_ROCM_COMPILER=local
+export ILGPU_ROCM_ARCH=gfx1100
+export ILGPU_SAMPLE_DEVICE=ROCm
+while IFS= read -r -d '' project; do
+  case "$project" in
+    Samples/DeviceInfo/DeviceInfo.csproj|Samples/Empty/Empty.csproj|\
+    Samples/EmptyAlgorithms/EmptyAlgorithms.csproj|\
+    Samples/SimpleViews/SimpleViews.csproj|\
+    Samples/KernelLibraryAttribute/MyKernelLib/MyKernelLib.csproj|\
+    Samples/LocalNuGetConsumer/Consumer/Consumer.csproj) continue ;;
+  esac
+  dotnet restore "$project" || exit 1
+done < <(find Samples -name '*.csproj' -print0)
+pwsh ./Src/scripts/Invoke-RocmSamples.ps1 -Architecture gfx1100 -Rebuild
 ```
 
-The Linux host in this work has not been configured, so its runtime results
-are pending. The script requires PowerShell 7 on Linux. For an individual
-sample without PowerShell, use the equivalent build properties:
+The script requires PowerShell 7 on Linux. For an individual sample without
+PowerShell, use the equivalent build properties:
 
 ```sh
 dotnet build Samples/SimpleKernel/SimpleKernel.csproj \
-  -p:ILGPUBackend=ROCm -p:ILGPUCompile=true \
-  -p:ILGPURocmCompiler=local '-p:ILGPUBackendOptions=--rocm-arch gfxXXXX'
+  -p:Configuration=Debug -p:ILGPUBackend=ROCm -p:ILGPUCompile=true \
+  -p:ILGPURocmCompiler=local '-p:ILGPUBackendOptions=--rocm-arch gfx1100'
 ILGPU_SAMPLE_DEVICE=ROCm dotnet Samples/SimpleKernel/bin/Debug/net10.0/SimpleKernel.dll
 ```
+
+`SimpleKernel` selected the RX 7900 XTX, loaded and ran its generated
+`gfx1100` kernel, and verified all 1,024 results. The full 39-project Linux
+matrix recorded **30 passed, 0 failed, 3 skipped, and 6 excluded**. All 33
+eligible projects built and their processes exited successfully; passes also
+met the sample-specific output or numeric checks. The kernel-library
+consumer passed. Build logs, run logs, host/compiler metadata, and
+per-project `results.json` are written under ignored
+`codex/temp/rocm-samples/`.
+
+Linux skips:
+
+- `MemoryBufferStrides`: GPU `Interop.WriteLine` results are absent with
+  default IO.
+- `SimpleWriteLine`: GPU output is absent; enabling IO currently fails IR
+  rewriting.
+- `SimpleDebugAssert`: it asserts on nonzero lanes while assertions are
+  disabled in this build.
+
+Linux exclusions:
+
+- `DeviceInfo` enumerates devices without running a kernel.
+- `Empty` and `EmptyAlgorithms` only create a context.
+- `SimpleViews` uses CPU-only direct `ArrayView` indexing.
+- `KernelLibraryAttribute/MyKernelLib` is a dependency; its consumer was run.
+- `LocalNuGetConsumer/Consumer` is covered by the separate local-package
+  validation workflow.
+
+PowerShell 7 was not installed on the validation host, so the same sequential
+restore, native build properties, explicit ROCm selection, and output checks
+were run with an equivalent Linux runner. The checked-in PowerShell runner
+now recognizes `SimpleKernel`'s explicit 1,024-result success line. These
+sample executions used local HIP; remote compiler routing was not part of
+the matrix.
 
 The local route compiles and executes on the same AMD host. To use a remote
 compiler, use the existing `ILGPUCompilerServices` property or service URL
@@ -133,8 +190,9 @@ The complete Windows ROCm matrix was rebuilt and rerun after the radix fix:
 `codex/temp/rocm-matrix-current/results.json` records the per-project
 results and links to the build and run logs. The three skips are
 `MemoryBufferStrides`, `SimpleDebugAssert`, and `SimpleWriteLine`, for the
-reasons shown in the table. This is a Windows `gfx1201` result; the Linux
-host and CUDA execution have not been run in this matrix.
+reasons shown in the table. This is the Windows `gfx1201` result. The Linux
+`gfx1100` result is recorded above; CUDA GPU execution was not run in either
+sample matrix.
 
 The follow-up native ROCm rebuild and GPU run passed all result checks for
 `AlgorithmsInitialize` (64 integer and 64 struct values),
@@ -153,8 +211,8 @@ stable one-bit radix pass using classification, the existing two-pass scan,
 and scatter kernels. This exposes launches in the consumer assembly and
 avoids the library method's unavailable AOT launcher. It uses more launches
 than the optimized library radix implementation; performance, other element
-types and operations, strided views, pairs, and Linux execution remain
-unvalidated.
+types and operations, strided views, pairs, and Linux cases beyond the
+recorded `gfx1100` matrix remain unvalidated.
 
 A later native ROCm rebuild and GPU run passed `AlgorithmsReduce` with
 noncapturing expression lambdas. The scalar overload returned `2016` for

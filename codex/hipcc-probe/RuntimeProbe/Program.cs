@@ -4,6 +4,66 @@ using System.Runtime.InteropServices;
 using System.IO;
 using ILGPU.Runtime.ROCm;
 
+string hostPlatform;
+if (OperatingSystem.IsWindows())
+{
+    hostPlatform = "Windows";
+}
+else if (OperatingSystem.IsLinux())
+{
+    hostPlatform = "Linux";
+}
+else
+{
+    throw new PlatformNotSupportedException(
+        "The HIP runtime probe supports Windows and Linux, not " +
+        $"{RuntimeInformation.OSDescription}.");
+}
+Console.WriteLine($"Platform: {hostPlatform}");
+
+static IntPtr LoadHipRuntime()
+{
+    string libraryPath;
+    if (OperatingSystem.IsWindows())
+    {
+        var hipPath = Environment.GetEnvironmentVariable("HIP_PATH");
+        libraryPath = !string.IsNullOrWhiteSpace(hipPath)
+            ? Path.Combine(hipPath, "bin", "amdhip64_7.dll")
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "AMD",
+                "ROCm",
+                "7.2",
+                "bin",
+                "amdhip64_7.dll");
+    }
+    else if (OperatingSystem.IsLinux())
+    {
+        // Resolve the ROCm shared library through the Linux dynamic loader.
+        libraryPath = "libamdhip64.so";
+    }
+    else
+    {
+        throw new PlatformNotSupportedException(
+            "The HIP runtime probe supports Windows and Linux, not " +
+            $"{RuntimeInformation.OSDescription}.");
+    }
+
+    Console.WriteLine($"HIP runtime library: {libraryPath}");
+    try
+    {
+        return NativeLibrary.Load(libraryPath);
+    }
+    catch (DllNotFoundException exception)
+    {
+        throw new DllNotFoundException(
+            $"Could not load the HIP runtime library '{libraryPath}'. " +
+            "On Linux, ensure libamdhip64.so is in the dynamic loader path; " +
+            "on Windows, ensure ROCm 7.2 is installed or HIP_PATH is set.",
+            exception);
+    }
+}
+
 if (args.Length > 0 && args[0] == "--layout")
 {
     Console.WriteLine($"HipDeviceProperties size: {Marshal.SizeOf<HipDeviceProperties>()}");
@@ -18,7 +78,7 @@ if (args.Length > 0 && args[0] == "--layout")
 
 if (args.Length > 0 && args[0] == "--stream-only")
 {
-    var runtime = NativeLibrary.Load(@"C:\Program Files\AMD\ROCm\7.2\bin\amdhip64_7.dll");
+    var runtime = LoadHipRuntime();
     try
     {
         var init = Marshal.GetDelegateForFunctionPointer<HipInit>(
@@ -41,7 +101,7 @@ if (args.Length > 0 && args[0] == "--stream-only")
 
 if (args.Length > 0 && args[0] == "--module-only")
 {
-    var runtime = NativeLibrary.Load(@"C:\Program Files\AMD\ROCm\7.2\bin\amdhip64_7.dll");
+    var runtime = LoadHipRuntime();
     try
     {
         T Get<T>(string name) where T : Delegate =>
@@ -79,7 +139,7 @@ foreach (var device in ROCmDevice.GetDevices())
 if (args.Length > 0 && args[0] == "--discover-only")
     return;
 
-var library = NativeLibrary.Load(@"C:\Program Files\AMD\ROCm\7.2\bin\amdhip64_7.dll");
+var library = LoadHipRuntime();
 try
 {
     T Get<T>(string name) where T : Delegate =>

@@ -70,9 +70,46 @@ HIP 7.2 build; select a C++ toolset compatible with your installed SDK.
 Only HIP SDK 7.2.60201 on a Radeon RX 9070 XT (`gfx1201`) has been
 validated end to end on Windows: `SimpleKernel` produced and ran a native
 code object and checked 1,024 outputs. Other HIP 7.x releases, AMD GPUs,
-and the full ROCm test suite remain unverified. See
-`build/README.md` for discovery order, MSBuild properties, and detailed
-diagnostics.
+remain unverified. The Windows test-suite result is summarized in
+`build/README.md`; Linux test results are recorded separately below. See that
+README for discovery order, MSBuild properties, and detailed diagnostics.
+
+## ROCm/HIP on Linux
+
+Linux local compilation and execution were validated on 2026-10-17 on Ubuntu 24.04.4 LTS
+(x86_64), kernel `6.8.0-147-generic`, .NET SDK `10.0.111`, ROCm `7.2.4`, and
+a Radeon RX 7900 XTX (`gfx1100`). The installed `/usr/bin/hipcc` reports HIP
+`7.2.53211` (AMD clang 22.0.0git); ILGPU also found `/opt/rocm/bin/hipcc`
+when `/usr/bin` was removed from `PATH`. The `amdgpu` kernel driver was in
+use (module vermagic `6.8.0-147-generic SMP preempt mod_unload modversions`);
+AMD SMI 26.2.2 reported ROCm 7.2.4. This documents one tested Linux
+configuration only.
+
+After building ILGPUC, select the local compiler and the architecture
+reported by the HIP runtime, then build and run a sample:
+
+```sh
+export ILGPU_ROCM_COMPILER=local
+export ILGPU_ROCM_ARCH=gfx1100
+mkdir -p codex/temp
+export TMPDIR="$PWD/codex/temp"
+dotnet Bin/Debug/net10.0/ILGPUC.dll probe-services --rocm-compiler local
+dotnet build Samples/SimpleKernel/SimpleKernel.csproj \
+  -p:Configuration=Debug -p:ILGPUBackend=ROCm -p:ILGPUCompile=true \
+  -p:ILGPURocmCompiler=local \
+  '-p:ILGPUBackendOptions=--rocm-arch gfx1100'
+ILGPU_SAMPLE_DEVICE=ROCm \
+  dotnet Samples/SimpleKernel/bin/Debug/net10.0/SimpleKernel.dll
+```
+
+The probe selected `/usr/bin/hipcc` and HIP `7.2.53211-97f5574fe2`. The
+sample ran its generated `gfx1100` kernel on the RX 7900 XTX and verified
+1,024 results. The Linux ROCm test suite passed 6,110, skipped 1,047, and
+failed 0; the ROCm sample matrix passed 30, skipped 3, and excluded 6. Test
+and sample skips/exclusions are documented in `Src/ILGPUC.Tests/tests.md`
+and `Samples/ROCm.md`. Other Linux SDK/GPU/kernel combinations are not
+validated by this result. The remote compiler route remains separate from
+local device execution.
 
 ### Remote compiler service and Docker
 

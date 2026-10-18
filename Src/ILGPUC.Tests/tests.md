@@ -388,6 +388,60 @@ discovered HIP 7.x compiler, and run the same filtered `dotnet test`
 command. A remote or Docker compiler can be selected with `auto`, but
 execution tests still need a local ROCm device.
 
+### Linux ROCm validation record
+
+The Linux suite was run on 2026-10-17 on Ubuntu 24.04.4 LTS (x86_64), kernel
+`6.8.0-147-generic`, .NET SDK `10.0.111`, ROCm `7.2.4`, HIP `7.2.53211`, and
+the Radeon RX 7900 XTX (`gfx1100`) using the in-kernel `amdgpu` driver. Set a
+writable temporary directory and use single-node MSBuild; host access is
+needed for VSTest's loopback communication:
+
+```sh
+mkdir -p /tmp/ilgpu-rocm-test-tmp
+export TMPDIR=/tmp/ilgpu-rocm-test-tmp
+export ILGPU_ROCM_COMPILER=local
+export ILGPU_ROCM_ARCH=gfx1100
+
+# Build/restore before using the no-build test commands below.
+dotnet build Src/ILGPUC.Tests/ILGPUC.Tests.csproj --configuration Debug -m:1
+
+# Start with the end-to-end GPU gate
+dotnet test Src/ILGPUC.Tests/ILGPUC.Tests.csproj --configuration Debug \
+  --no-build --no-restore \
+  --filter 'FullyQualifiedName~ROCm_BasicMovementExecutionTests.Copy_ProducesCorrectOutput' \
+  --blame-hang-timeout 360s -m:1
+
+# Then run the complete suite
+dotnet test Src/ILGPUC.Tests/ILGPUC.Tests.csproj --configuration Debug \
+  --no-build --no-restore --blame-hang-timeout 360s -m:1 \
+  --logger 'trx;LogFileName=full-rocm-suite.trx'
+```
+
+Results by layer (passed / skipped / failed):
+
+| Layer / filter | Passed | Skipped | Failed |
+| --- | ---: | ---: | ---: |
+| IR snapshots (`FullyQualifiedName~IRTests`) | 3,942 | 0 | 0 |
+| Backend tests, combined (`FullyQualifiedName~BackendTests`) | 1,737 | 508 | 0 |
+| Source generation (`FullyQualifiedName~BackendTests.SourceGeneration`) | 1,572 | 28 | 0 |
+| Native compilation (`FullyQualifiedName~BackendTests.NativeCompilation`) | 160 | 480 | 0 |
+| GPU execution (`FullyQualifiedName~ExecutionTests`) | 352 | 533 | 0 |
+| MSBuild integration (`FullyQualifiedName~IntegrationTests`) | 19 | 5 | 0 |
+| Non-kernel tests (`FullyQualifiedName~NonKernelTests`) | 53 | 0 | 0 |
+| Performance regressions (`FullyQualifiedName~PerfTests`) | 4 | 1 | 0 |
+| Full suite | 6,110 | 1,047 | 0 |
+
+The full TRX result is `Src/ILGPUC.Tests/TestResults/full-rocm-suite.trx`;
+raw per-layer logs are in `/tmp/ilgpu-rocm-suite-logs/`. The full result
+contains 1,107 ROCm-named test cases, all passed with no ROCm-named skips or
+failures. The 1,047 overall skips are attributable to unavailable CUDA,
+OpenCL, and Metal compilers; unsupported features in those backends; two CPU
+grouped-grid modeling limitations; and one opt-in benchmark requiring
+`ILGPU_RUN_BENCH=1`. No ROCm failure or skip remained unexplained. This is
+the result for the listed Linux host and does not establish compatibility
+with other Linux ROCm/GPU combinations. Windows HIP SDK 7.2/gfx1201 validation
+is recorded separately in `Src/ILGPUC/build/README.md`.
+
 ### Run and debug ROCm tests in Rider on Windows
 
 Generate a local test settings file from the installed HIP SDK and MSVC

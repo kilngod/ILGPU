@@ -41,6 +41,9 @@ static class Program
 
         const int Length = 1024;
         using var buffer = stream.Allocate1D<int>(Length);
+        var initialData = new int[Length];
+        Array.Fill(initialData, -1);
+        buffer.CopyFromCPU(initialData);
 
         stream.Launch(
             (Index1D)Length,
@@ -51,9 +54,13 @@ static class Program
         for (int i = 0; i < data.Length; i++)
         {
             if (data[i] != 42 + i)
-                Console.WriteLine($"Error at element {i}: {data[i]} found");
+            {
+                throw new InvalidOperationException(
+                    $"Incorrect result at element {i}: expected {42 + i}, " +
+                    $"found {data[i]}.");
+            }
         }
 
-        Console.WriteLine("Done.");
+        Console.WriteLine($"Verified all {Length} kernel results.");
     }
 }

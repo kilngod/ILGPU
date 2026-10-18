@@ -114,16 +114,13 @@ public sealed class HipccCompiler : CompilerBase
                     request.OutputType);
             }
 
-            // Windows HIP 7.2 --genco produces a Clang offload bundle. Extract
-            // its AMDGPU device member; Linux's raw ELF output needs no change.
+            // HIP 7.2 --genco can produce a Clang offload bundle. Extract its
+            // AMDGPU device member on either platform when the output is bundled;
+            // raw Linux ELF output continues directly to validation below.
             var codeObjectFile = outputFile;
             if (IsOffloadBundle(outputFile))
             {
-                var bundler = Path.Combine(
-                    Path.GetDirectoryName(ExecutablePath)!,
-                    OperatingSystem.IsWindows()
-                        ? "clang-offload-bundler.exe"
-                        : "clang-offload-bundler");
+                var bundler = FindBundler();
                 var (listExit, listOutput, listError) = await RunBundlerAsync(
                     bundler,
                     $"--list --type=o --input=\"{outputFile}\"",
@@ -298,6 +295,29 @@ public sealed class HipccCompiler : CompilerBase
         Span<byte> prefix = stackalloc byte[signature.Length];
         output.ReadExactly(prefix);
         return prefix.SequenceEqual(signature);
+    }
+
+    private string FindBundler()
+    {
+        var name = OperatingSystem.IsWindows()
+            ? "clang-offload-bundler.exe"
+            : "clang-offload-bundler";
+        var compilerPath = Path.GetFullPath(ExecutablePath);
+        var resolvedCompilerPath = new FileInfo(compilerPath)
+            .ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? compilerPath;
+        var compilerDirectory = Path.GetDirectoryName(resolvedCompilerPath)!;
+        var rocmRoot = Directory.GetParent(compilerDirectory)?.FullName;
+        var candidates = new List<string>
+        {
+            Path.Combine(compilerDirectory, name),
+        };
+        if (rocmRoot is not null)
+        {
+            candidates.Add(Path.Combine(rocmRoot, "llvm", "bin", name));
+            candidates.Add(Path.Combine(rocmRoot, "lib", "llvm", "bin", name));
+        }
+
+        return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
     }
 
     private static async Task<(int exitCode, string stdout, string stderr)>

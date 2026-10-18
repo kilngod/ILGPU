@@ -295,6 +295,11 @@ function Review-Output([string] $name, [string] $path) {
                 return @('Failed', '3D array round trip did not pass.')
             }
         }
+        'SimpleKernel' {
+            if ('Verified all 1024 kernel results.' -notin $lines) {
+                return @('Failed', 'The kernel did not verify all 1024 results.')
+            }
+        }
         'SimpleAtomics' {
             $expected = @(4096, 4, 0, 0, 4, 0, 0)
             $values = @($lines | Where-Object { $_ -match '^Data\[' })
