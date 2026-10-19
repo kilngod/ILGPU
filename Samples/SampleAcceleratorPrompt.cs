@@ -41,6 +41,7 @@ internal static class SampleAcceleratorPrompt
         var devices = context.GetPreferredDevices(
             preferCPU: false,
             matchingDevicesOnly: false).ToList();
+        var detectedDevices = context.Devices.ToList();
 
         var compiledAcceleratorTypes = GetCompiledAcceleratorTypes();
         if (compiledAcceleratorTypes.Count > 0)
@@ -73,6 +74,11 @@ internal static class SampleAcceleratorPrompt
             }
         }
 
+        var availableBackendOptions = devices
+            .Select(device => device.AcceleratorType)
+            .Distinct()
+            .ToArray();
+
         var requestedType = Environment.GetEnvironmentVariable(
             AcceleratorTypeEnvironmentVariable);
         if (!string.IsNullOrWhiteSpace(requestedType))
@@ -99,6 +105,46 @@ internal static class SampleAcceleratorPrompt
 
         if (devices.Count == 0)
             return context.GetPreferredDevice();
+
+        if (devices.Count == 1)
+        {
+            var device = devices[0];
+            Console.WriteLine(
+                $"Executing on {device.AcceleratorType}: " +
+                $"{device.Name}{GetArchitectureLabel(device)} (default)");
+
+            var alternatives = compiledAcceleratorTypes.Count > 0
+                ? detectedDevices
+                    .Where(candidate => !compiledAcceleratorTypes.Contains(
+                        candidate.AcceleratorType))
+                    .ToList()
+                : new List<Device>();
+            if (alternatives.Count > 0)
+            {
+                Console.WriteLine(
+                    "Other ILGPU accelerators detected (not compiled for this sample):");
+                foreach (var alternative in alternatives)
+                {
+                    Console.WriteLine(
+                        $"  {alternative.AcceleratorType}: {alternative.Name}" +
+                        GetArchitectureLabel(alternative));
+                }
+                Console.WriteLine(
+                    "To build for another backend, change ILGPUBackend in " +
+                    "Samples/Directory.Build.props.");
+                Console.WriteLine(
+                    "To choose a compiled alternative, set " +
+                    $"ILGPU_SAMPLE_DEVICE to one of these backends " +
+                    $"({string.Join(", ", availableBackendOptions)}). " +
+                    "Set it in Rider's Run/Debug Configuration under " +
+                    "Environment variables.");
+                Console.WriteLine(
+                    "Remote compiler services are build routes, not runtime " +
+                    "accelerators; inspect them with ILGPUC probe-services.");
+            }
+
+            return device;
+        }
 
         // GetPreferredDevices places the normal Auto choice first. This keeps
         // menu behavior aligned with ILGPU's common device selection policy.
