@@ -12,8 +12,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using ILGPU.Runtime;
 using ILGPU.Runtime.Cuda;
 using ILGPU.Runtime.ROCm;
@@ -21,20 +19,12 @@ using ILGPU.Runtime.ROCm;
 namespace ILGPU.Samples;
 
 /// <summary>
-/// Prompts for a sample accelerator while using ILGPU's automatic device order
-/// as the default selection.
+/// Selects a sample accelerator using ILGPU's automatic device order.
 /// </summary>
 internal static class SampleAcceleratorPrompt
 {
-    private const int SelectionTimeoutSeconds = 4;
-    private const string NonInteractiveEnvironmentVariable =
-        "ILGPU_SAMPLE_NONINTERACTIVE";
-    private const string AcceleratorTypeEnvironmentVariable =
-        "ILGPU_SAMPLE_DEVICE";
-
     /// <summary>
-    /// Selects an accelerator for a sample. Interactive consoles get a short
-    /// selection prompt; redirected consoles use ILGPU's automatic choice.
+    /// Selects the first available accelerator in ILGPU's preferred order.
     /// </summary>
     internal static Device Select(Context context)
     {
@@ -63,152 +53,65 @@ internal static class SampleAcceleratorPrompt
         if (compiledAcceleratorTypes.Count == 0 ||
             compiledAcceleratorTypes.Contains(AcceleratorType.CPU))
         {
-            foreach (var device in context.Devices)
+            foreach (var cpuDevice in context.Devices)
             {
-                if (device.AcceleratorType == AcceleratorType.CPU &&
+                if (cpuDevice.AcceleratorType == AcceleratorType.CPU &&
                     !devices.Any(candidate =>
                         candidate.AcceleratorType == AcceleratorType.CPU))
                 {
-                    devices.Add(device);
+                    devices.Add(cpuDevice);
                 }
-            }
-        }
-
-        var availableBackendOptions = devices
-            .Select(device => device.AcceleratorType)
-            .Distinct()
-            .ToArray();
-
-        var requestedType = Environment.GetEnvironmentVariable(
-            AcceleratorTypeEnvironmentVariable);
-        if (!string.IsNullOrWhiteSpace(requestedType))
-        {
-            if (!Enum.TryParse(
-                requestedType,
-                ignoreCase: true,
-                out AcceleratorType type))
-            {
-                throw new ArgumentException(
-                    $"Unknown accelerator type '{requestedType}' in " +
-                    $"{AcceleratorTypeEnvironmentVariable}.");
-            }
-
-            devices = devices
-                .Where(device => device.AcceleratorType == type)
-                .ToList();
-            if (devices.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    $"No {type} accelerator is available in this context.");
             }
         }
 
         if (devices.Count == 0)
             return context.GetPreferredDevice();
 
-        if (devices.Count == 1)
-        {
-            var device = devices[0];
-            Console.WriteLine(
-                $"Executing on {device.AcceleratorType}: " +
-                $"{device.Name}{GetArchitectureLabel(device)} (default)");
+        var device = devices[0];
+        Console.WriteLine(
+            $"Executing on {device.AcceleratorType}: " +
+            $"{device.Name}{GetArchitectureLabel(device)} (default)");
 
-            var alternatives = compiledAcceleratorTypes.Count > 0
-                ? detectedDevices
-                    .Where(candidate => !compiledAcceleratorTypes.Contains(
-                        candidate.AcceleratorType))
-                    .ToList()
-                : new List<Device>();
-            if (alternatives.Count > 0)
-            {
-                Console.WriteLine(
-                    "Other ILGPU accelerators detected (not compiled for this sample):");
-                foreach (var alternative in alternatives)
-                {
-                    Console.WriteLine(
-                        $"  {alternative.AcceleratorType}: {alternative.Name}" +
-                        GetArchitectureLabel(alternative));
-                }
-                Console.WriteLine(
-                    "To build for another backend, change ILGPUBackend in " +
-                    "Samples/Directory.Build.props.");
-                Console.WriteLine(
-                    "To choose a compiled alternative, set " +
-                    $"ILGPU_SAMPLE_DEVICE to one of these backends " +
-                    $"({string.Join(", ", availableBackendOptions)}). " +
-                    "Set it in Rider's Run/Debug Configuration under " +
-                    "Environment variables.");
-                Console.WriteLine(
-                    "Remote compiler services are build routes, not runtime " +
-                    "accelerators; inspect them with ILGPUC probe-services.");
-            }
-
-            return device;
-        }
-
-        // GetPreferredDevices places the normal Auto choice first. This keeps
-        // menu behavior aligned with ILGPU's common device selection policy.
-        if (string.Equals(
-            Environment.GetEnvironmentVariable(NonInteractiveEnvironmentVariable),
-            "1",
-            StringComparison.Ordinal))
-        {
-            return devices[0];
-        }
-
-        var selectedIndex = 0;
-        Console.WriteLine("Available accelerators for this sample:");
-        for (int i = 0; i < devices.Count; ++i)
-        {
-            var device = devices[i];
-            var defaultLabel = i == 0 ? " (default)" : string.Empty;
-            Console.WriteLine(
-                $"  {i + 1}. {device.AcceleratorType}: {device.Name}" +
-                $"{GetArchitectureLabel(device)}{defaultLabel}");
-        }
-        if (Console.IsInputRedirected)
+        var alternatives = compiledAcceleratorTypes.Count > 0
+            ? detectedDevices
+                .Where(candidate => !compiledAcceleratorTypes.Contains(
+                    candidate.AcceleratorType))
+                .ToList()
+            : detectedDevices
+                .Where(candidate => candidate.AcceleratorType !=
+                    device.AcceleratorType)
+                .ToList();
+        if (alternatives.Count > 0)
         {
             Console.WriteLine(
-                "Press Enter for the default, or type a number and press Enter. " +
-                "Auto-running in 4 seconds.");
-            selectedIndex = ReadLineSelection(devices.Count);
-            return devices[selectedIndex];
-        }
-
-        Console.WriteLine("Use Up/Down to choose, Enter to run, or wait 4 seconds.");
-
-        var timeout = DateTime.UtcNow.AddSeconds(SelectionTimeoutSeconds);
-        var previousStatusLength = 0;
-        while (DateTime.UtcNow < timeout)
-        {
-            var remaining = Math.Max(
-                1,
-                (int)Math.Ceiling((timeout - DateTime.UtcNow).TotalSeconds));
-            var status =
-                $"Selected: {selectedIndex + 1}. " +
-                $"{devices[selectedIndex].AcceleratorType}: " +
-                $"{devices[selectedIndex].Name}; auto-running in {remaining}s. ";
-            Console.Write('\r');
-            Console.Write(status.PadRight(previousStatusLength));
-            previousStatusLength = status.Length;
-
-            if (TryReadKey(out var key))
+                compiledAcceleratorTypes.Count > 0
+                    ? "Other ILGPU accelerators detected (not compiled for this sample):"
+                    : "Other ILGPU accelerators detected:");
+            foreach (var alternative in alternatives)
             {
-                if (key == ConsoleKey.Enter)
-                    break;
-                if (key == ConsoleKey.UpArrow)
-                    selectedIndex = (selectedIndex - 1 + devices.Count) % devices.Count;
-                else if (key == ConsoleKey.DownArrow)
-                    selectedIndex = (selectedIndex + 1) % devices.Count;
-            }
-            else
-            {
-                Thread.Sleep(25);
+                Console.WriteLine(
+                    $"  {alternative.AcceleratorType}: {alternative.Name}" +
+                    GetArchitectureLabel(alternative));
             }
         }
 
-        Console.WriteLine();
-        return devices[selectedIndex];
+        var backendOptions = detectedDevices
+            .Select(candidate => candidate.AcceleratorType)
+            .Append(device.AcceleratorType)
+            .Distinct()
+            .ToArray();
+        var otherBackendOptions = backendOptions
+            .Where(type => type != device.AcceleratorType)
+            .ToArray();
+        var otherBackendLabel = otherBackendOptions.Length > 0
+            ? $" (or {string.Join(", ", otherBackendOptions)})"
+            : string.Empty;
+        Console.WriteLine(
+            $"To build for another backend, set ILGPUBackend=" +
+            $"{device.AcceleratorType}{otherBackendLabel} in " +
+            "Samples/Directory.Build.props, then rebuild.");
+
+        return device;
     }
 
     private static string GetArchitectureLabel(Device device) => device switch
@@ -239,40 +142,4 @@ internal static class SampleAcceleratorPrompt
         return acceleratorTypes;
     }
 
-    private static int ReadLineSelection(int deviceCount)
-    {
-        using var cancellation = new CancellationTokenSource();
-        var readTask = Console.In.ReadLineAsync(cancellation.Token).AsTask();
-        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(SelectionTimeoutSeconds));
-        if (Task.WhenAny(readTask, timeoutTask).GetAwaiter().GetResult() != readTask)
-        {
-            cancellation.Cancel();
-            return 0;
-        }
-
-        var input = readTask.GetAwaiter().GetResult();
-        return int.TryParse(input, out int selectedNumber) &&
-            selectedNumber > 0 && selectedNumber <= deviceCount
-            ? selectedNumber - 1
-            : 0;
-    }
-
-    private static bool TryReadKey(out ConsoleKey key)
-    {
-        try
-        {
-            if (Console.KeyAvailable)
-            {
-                key = Console.ReadKey(intercept: true).Key;
-                return true;
-            }
-        }
-        catch (InvalidOperationException)
-        {
-            // Some IDE consoles do not support non-blocking key input.
-        }
-
-        key = default;
-        return false;
-    }
 }
