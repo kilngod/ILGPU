@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Rendered to NuGet.config by EndToEndTest/run.sh, which substitutes
+  Rendered to NuGet.config by the EndToEndTest runner, which substitutes
   @@FEED@@ with the absolute path of the locally-built nupkg feed.
 
   packageSources: clear inherited config so the consumer restores from

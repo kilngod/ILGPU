@@ -11,7 +11,7 @@ End-to-end consumer smoke check for the published ILGPU + ILGPUC NuGet packages.
 
 ## When to run it
 
-- **Locally** before a release tag: `EndToEndTest/run.sh`. Verifies the package ships in a state a downstream consumer can actually build against, on your dev box.
+- **Locally** before a release tag: `EndToEndTest/run.sh` on Linux/macOS, or `EndToEndTest/run.ps1` on Windows. Verifies the package ships in a state a downstream consumer can actually build against, on your dev box.
 - **In CI**: the `e2e-test` job runs immediately after `test-cpu`. The four `test-*-compile` jobs (Metal / CUDA / ROCm / OpenCL) gate on it, so a packaging breakage fails fast — no expensive macOS or Docker-pull runners spin up.
 
 ## Why it's a real project, not a template
@@ -29,7 +29,7 @@ The csproj and `Program.cs` open in an IDE without token expansion. A contributo
 
 ## Troubleshooting
 
-When `run.sh` fails, the leftover state is on disk:
+When either runner fails, the leftover state is on disk:
 
 ```bash
 ls EndToEndTest/HelloKernel/packages/ilgpuc/0.0.0-e2e-*/
@@ -53,6 +53,10 @@ The `feed/` directory contains the packed nupkgs — `unzip -l` to inspect layou
 |-----------|--------------------------------------|-----------------------------------------|
 | `CONFIG`  | `Release`                            | Build configuration for both packs + consumer build |
 | `VERSION` | `0.0.0-e2e-<utc-timestamp>`          | Package version stamped into the local feed |
+
+The PowerShell runner accepts `-Configuration` and `-Version` parameters.
+They default to the same `CONFIG` and `VERSION` environment variables used by
+`run.sh`.
 
 ## Relationship to other tests
 
