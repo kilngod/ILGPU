@@ -1251,6 +1251,57 @@ sealed class CPUMethodEmitter(
 
         var varName = context.GetValueName(value);
 
+        if (value is SetField update && !analysis.IsScalar(update))
+        {
+            var structType = (StructureType)update.Type;
+            var typeName = new TypeEmitter(context).GetTypeName(structType);
+            var span = update.FieldSpan;
+            context.WriteLine("for (int _si = 0; _si < SIMDWidth; _si++)");
+            context.OpenScope();
+            var fields = new System.Text.StringBuilder();
+            fields.Append($"{varName}[_si] = new {typeName} {{ ");
+            for (int i = 0; i < structType.NumFields; ++i)
+            {
+                if (i > 0) fields.Append(", ");
+                var inSpan = i >= span.Index && i < span.Index + span.Span;
+                var source = inSpan ? update.Value : update.Source;
+                var fieldIndex = inSpan ? i - span.Index : i;
+                fields.Append($"{StructureType.GetFieldName(i)} = {EmitLaneField(source, fieldIndex, analysis)}");
+            }
+            fields.Append(" };");
+            context.WriteLine(fields.ToString());
+            context.CloseScope();
+            return;
+        }
+
+        if (value is GetField field && !analysis.IsScalar(field)
+            && !(field.Source is Parameter indexParameter
+                && indexParameter.Index == 0
+                && indexParameter.Type is StructureType indexType
+                && IsIndexStructType(indexType)
+                && indexParameter.Scope == context.Module.EntryPoint))
+        {
+            context.WriteLine("for (int _si = 0; _si < SIMDWidth; _si++)");
+            context.OpenScope();
+            if (field.Type is StructureType subType)
+            {
+                var typeName = new TypeEmitter(context).GetTypeName(subType);
+                var fields = new System.Text.StringBuilder();
+                fields.Append($"{varName}[_si] = new {typeName} {{ ");
+                for (int i = 0; i < subType.NumFields; ++i)
+                {
+                    if (i > 0) fields.Append(", ");
+                    fields.Append($"{StructureType.GetFieldName(i)} = {EmitLaneField(field.Source, field.FieldSpan.Index + i, analysis)}");
+                }
+                fields.Append(" };");
+                context.WriteLine(fields.ToString());
+            }
+            else
+                context.WriteLine($"{varName}[_si] = {EmitLaneField(field.Source, field.FieldSpan.Index, analysis)};");
+            context.CloseScope();
+            return;
+        }
+
         // GetField values from decomposed multi-dim index parameters:
         // the decomposed array is already computed, just assign it to
         // the pool variable (or whatever varName was set to).
@@ -1301,6 +1352,24 @@ sealed class CPUMethodEmitter(
         var exprEmitter = new ExpressionEmitter(context, typeEmitter);
         var expr = exprEmitter.EmitDefinition(value);
         context.WriteLine($"{varName} = {expr};");
+    }
+
+    private string EmitLaneField(Value value, int index, VectorizationAnalysis analysis)
+    {
+        if (value is NullValue)
+            return "default";
+        if (value is StructureValue structure && !context.NeedsVariable(value))
+            return EmitLaneField(structure.Values[index], 0, analysis);
+        string source;
+        if (value is Load || context.NeedsVariable(value))
+            source = context.GetValueName(value);
+        else
+            source = new ExpressionEmitter(context, new TypeEmitter(context)).EmitExpression(value);
+        if (!analysis.IsScalar(value))
+            source += "[_si]";
+        return value.Type is StructureType
+            ? $"({source}).{StructureType.GetFieldName(index)}"
+            : source;
     }
 
     /// <summary>
@@ -1401,9 +1470,27 @@ sealed class CPUMethodEmitter(
 
         // Pre-compute which blocks belong to each branch for phi Select emission
         var trueBlocks = new HashSet<BasicBlock>();
-        CollectBlocks(ifStmt.TrueBranch, trueBlocks);
         var falseBlocks = new HashSet<BasicBlock>();
-        CollectBlocks(ifStmt.FalseBranch, falseBlocks);
+        bool aggregateMerge = false;
+        if (ifStmt.MergeBlock != null)
+            foreach (var phi in ifStmt.MergeBlock.PhiValues)
+                aggregateMerge |= phi.Type is StructureType;
+        if (aggregateMerge)
+        {
+            CollectDirectBlocks(ifStmt.TrueBranch, trueBlocks);
+            CollectDirectBlocks(ifStmt.FalseBranch, falseBlocks);
+            if (ifStmt.TrueBranch.Elements.Count == 0) trueBlocks.Add(ifStmt.Block);
+            if (ifStmt.FalseBranch.Elements.Count == 0) falseBlocks.Add(ifStmt.Block);
+            foreach (var element in ifStmt.TrueBranch.Elements)
+                if (element is IfStatement nested) trueBlocks.Remove(nested.Block);
+            foreach (var element in ifStmt.FalseBranch.Elements)
+                if (element is IfStatement nested) falseBlocks.Remove(nested.Block);
+        }
+        else
+        {
+            CollectBlocks(ifStmt.TrueBranch, trueBlocks);
+            CollectBlocks(ifStmt.FalseBranch, falseBlocks);
+        }
 
         // True branch: activeMask = savedMask & mask
         context.WriteLine("// True branch");
@@ -1417,7 +1504,7 @@ sealed class CPUMethodEmitter(
         context.CloseScope();
 
         // False branch: activeMask = savedMask & !mask
-        if (ifStmt.FalseBranch.Elements.Count > 0)
+        if (ifStmt.FalseBranch.Elements.Count > 0 || aggregateMerge)
         {
             context.WriteLine("// False branch");
             context.WriteLine(
@@ -2280,9 +2367,7 @@ sealed class CPUMethodEmitter(
 
                 if (!analysis.IsScalar(phi) && analysis.IsScalar(arg))
                 {
-                    var elemType = phi.Type is PrimitiveType pt
-                        ? config.GetPrimitiveTypeName(pt.BasicValueType)
-                        : "int";
+                    var elemType = typeEmitter.GetTypeName(phi.Type);
                     context.WriteLine(
                         $"CPUVectorIntrinsics.Broadcast<{elemType}>(" +
                         $"{phiVar}, {source});");
@@ -2335,9 +2420,7 @@ sealed class CPUMethodEmitter(
                 if (analysis.IsScalar(arg))
                 {
                     var scalarExpr = exprEmitter.EmitExpression(arg);
-                    var elemType = phi.Type is PrimitiveType pt
-                        ? config.GetPrimitiveTypeName(pt.BasicValueType)
-                        : "int";
+                    var elemType = typeEmitter.GetTypeName(phi.Type);
                     var bcastName = $"_phi_bcast_{phi.Id}_{i}";
                     context.WriteLine(
                         $"var {bcastName} = new {elemType}[SIMDWidth];");
@@ -2351,9 +2434,7 @@ sealed class CPUMethodEmitter(
                     incoming = context.GetValueName(arg);
                 }
 
-                var elemT = phi.Type is PrimitiveType pt2
-                    ? config.GetPrimitiveTypeName(pt2.BasicValueType)
-                    : "int";
+                var elemT = typeEmitter.GetTypeName(phi.Type);
                 context.WriteLine(
                     $"CPUVectorIntrinsics.Select<{elemT}>(" +
                     $"{phiVar}, {activeMask}, {incoming}, {phiVar});");

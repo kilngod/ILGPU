@@ -20,10 +20,7 @@ sealed class OpenCLLauncherEmitter : PerArgumentLauncherEmitter
 
     protected override void EmitPreamble(LauncherEmissionContext ctx)
     {
-        ctx.WriteLine("var clKernel = (CLKernel)(_runtimeKernel" +
-            " ?? throw new System.InvalidOperationException(" +
-            "\"The kernel is not loaded on this accelerator: it is not " +
-            "compatible with the device or failed to build for it.\"));");
+        ctx.WriteLine("var clKernel = (CLKernel)GetRuntimeKernel(stream);");
         ctx.WriteLine("var clStream = (CLStream)stream;");
         ctx.WriteLine(
             "var launchConfig = stream.PrepareKernelLaunch(" +

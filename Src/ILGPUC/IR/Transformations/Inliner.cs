@@ -115,6 +115,7 @@ sealed class IterativeInliner(TransformationArgs args) : Transformation(args)
             if (!HasInlineableCalls(current))
                 break;
 
+
             // SimplifyControlFlow is intentionally omitted from the
             // inner loop. Running it between Inliner and SSA causes
             // RebuildAndMemoize to reconstruct alloca→addrspacecast→load

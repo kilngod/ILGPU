@@ -41,4 +41,13 @@ public abstract class BasicPhiExecutionTests : ExecutionTestBase
             ["Kernels.DeepPhiKernel"],
             ["3", "3", "3", "3"]);
     }
+
+    [SkippableFact]
+    public async Task ReachableBranchesAndLoopInputsRemainValid()
+    {
+        await VerifyProgramOutputAsync(
+            "TestPrograms/BasicPhi/PhiReachability.cs",
+            ["Kernels.PhiReachabilityKernel"],
+            ["10", "-1", "15", "6", "14", "3", "19", "10"]);
+    }
 }

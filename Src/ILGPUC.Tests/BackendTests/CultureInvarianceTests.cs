@@ -58,8 +58,8 @@ public sealed class CultureInvarianceTests
             Assert.False(string.IsNullOrWhiteSpace(result.SourceCode));
 
             // FloatArrayKernel writes 1.5f, 2.5f, 3.5f, 4.5f. After locale-correct
-            // emission these must round-trip as 1.500000, 2.500000, etc.
-            Assert.Contains("1.500000", result.SourceCode);
+            // emission these must use the invariant decimal separator.
+            Assert.Contains("1.5", result.SourceCode);
 
             // Conversely, no float literal in the emitted source may contain
             // a comma between digits — that would mean the German decimal

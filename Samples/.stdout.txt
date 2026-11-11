@@ -1,0 +1,5 @@
+Executing on ROCm: AMD Radeon RX 9070 XT (gfx1201) (default)
+Other ILGPU accelerators detected (not compiled for this sample):
+  CPU: CPU (SIMD)
+  OpenCL: gfx1201
+To build for another backend, set ILGPUBackend=ROCm (or CPU, OpenCL) in Samples/Directory.Build.props, then rebuild.

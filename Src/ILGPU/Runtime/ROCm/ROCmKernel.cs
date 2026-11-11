@@ -35,6 +35,18 @@ public sealed class ROCmKernel : Kernel
         var binary = compiledKernel.GetCompiledBinary();
         fixed (byte* pBinary = binary.Span)
         {
+            // Opt-in pointer diagnostics for native module-load failures.
+            if (Environment.GetEnvironmentVariable(
+                "ILGPU_ROCM_TRACE_MODULE_POINTER") == "1")
+            {
+                string header = binary.Length >= 4
+                    ? $"{pBinary[0]:X2}{pBinary[1]:X2}{pBinary[2]:X2}{pBinary[3]:X2}"
+                    : "<short>";
+                Console.Error.WriteLine(
+                    $"ROCm module pointer=0x{(nuint)pBinary:X}, " +
+                    $"length={binary.Length}, " +
+                    $"header={header}");
+            }
             ROCmException.ThrowIfFailed(
                 CurrentAPI.ModuleLoadData(pBinary, out IntPtr module));
             ModuleHandle = module;

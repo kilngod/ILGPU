@@ -227,7 +227,7 @@ sealed class ExpressionEmitter(GenerationContext context, TypeEmitter typeEmitte
             GetViewLength viewLen => EmitGetViewLength(viewLen),
             SubView subView => EmitSubView(subView),
             GetField getField => EmitGetField(getField),
-            SetField setField => Emit(setField.Source),
+            SetField setField => EmitSetField(setField),
             StructureValue structure => EmitStructure(structure),
             LoadElementAddress lea => EmitLoadElementAddress(lea),
             LoadFieldAddress lfa => EmitLoadFieldAddress(lfa),
@@ -510,7 +510,7 @@ sealed class ExpressionEmitter(GenerationContext context, TypeEmitter typeEmitte
             BasicValueType.Int64 => primitive.Int64Value.ToString() + "L",
             BasicValueType.Float16 =>
                 IntrinsicEmitter.EmitHalfConstant(primitive.Float16Value.RawValue),
-            BasicValueType.Float32 => FormatFloat(primitive.Float32Value) + "f",
+            BasicValueType.Float32 => FormatFloat(primitive.Float32Value),
             BasicValueType.Float64 => FormatFloat(primitive.Float64Value),
             _ => "0"
         };
@@ -520,24 +520,35 @@ sealed class ExpressionEmitter(GenerationContext context, TypeEmitter typeEmitte
     /// <summary>
     /// Formats a float constant, handling NaN and infinity special cases.
     /// </summary>
-    private static string FormatFloat(float value)
+    private string FormatFloat(float value)
     {
-        if (float.IsNaN(value)) return "NAN";
-        if (float.IsPositiveInfinity(value)) return "INFINITY";
-        if (float.IsNegativeInfinity(value)) return "-INFINITY";
-        return value.ToString("F6", CultureInfo.InvariantCulture);
+        bool cpu = context.LanguageConfig is CPU.CPULanguageConfiguration;
+        if (float.IsNaN(value)) return cpu ? "float.NaN" : "NAN";
+        if (float.IsPositiveInfinity(value)) return cpu ? "float.PositiveInfinity" : "INFINITY";
+        if (float.IsNegativeInfinity(value)) return cpu ? "float.NegativeInfinity" : "-INFINITY";
+        return FloatingLiteral(value.ToString("R", CultureInfo.InvariantCulture)) + "f";
     }
 
     /// <summary>
     /// Formats a double constant, handling NaN and infinity special cases.
     /// </summary>
-    private static string FormatFloat(double value)
+    private string FormatFloat(double value)
     {
-        if (double.IsNaN(value)) return "NAN";
-        if (double.IsPositiveInfinity(value)) return "INFINITY";
-        if (double.IsNegativeInfinity(value)) return "-INFINITY";
-        return value.ToString("F6", CultureInfo.InvariantCulture);
+        bool cpu = context.LanguageConfig is CPU.CPULanguageConfiguration;
+        if (double.IsNaN(value)) return cpu ? "double.NaN" : "NAN";
+        if (double.IsPositiveInfinity(value)) return cpu ? "double.PositiveInfinity" : "INFINITY";
+        if (double.IsNegativeInfinity(value)) return cpu ? "double.NegativeInfinity" : "-INFINITY";
+        return FloatingLiteral(value.ToString("R", CultureInfo.InvariantCulture));
     }
+
+    // Integral-looking strings must remain floating literals (e.g. 1.0f,
+    // not 1f, which is invalid C/C++), including negative zero.
+    private static string FloatingLiteral(string text) =>
+        text.Contains('.', StringComparison.Ordinal) ||
+        text.Contains('E', StringComparison.Ordinal) ||
+        text.Contains('e', StringComparison.Ordinal)
+            ? text
+            : text + ".0";
 
     #endregion
 
@@ -1046,6 +1057,48 @@ sealed class ExpressionEmitter(GenerationContext context, TypeEmitter typeEmitte
     #endregion
 
     #region Fields and Structures
+
+    /// <summary>Emits the immutable structure resulting from a field update.</summary>
+    private Emitted EmitSetField(SetField setField)
+    {
+        var type = (StructureType)setField.Type;
+        var span = setField.FieldSpan;
+        var sb = new StringBuilder();
+        var typeName = typeEmitter.GetTypeName(type);
+        bool cStyle = context.LanguageConfig.UsesCStyleStructLiterals;
+        sb.Append(cStyle ? $"({typeName}){{ " : $"new {typeName} {{ ");
+        for (int i = 0; i < type.NumFields; ++i)
+        {
+            if (i > 0) sb.Append(", ");
+            if (!cStyle) sb.Append($"{StructureType.GetFieldName(i)} = ");
+            bool replaced = i >= span.Index && i < span.Index + span.Span;
+            sb.Append(replaced
+                ? EmitStructureField(setField.Value, i - span.Index).Text
+                : EmitStructureField(setField.Source, i).Text);
+        }
+        sb.Append(" }");
+        return new Emitted(sb.ToString(), Prec.Postfix);
+    }
+
+    // Resolve inlined update chains per field rather than expanding a complete
+    // aggregate once per field. Loads and other block values already have SSA
+    // temporaries, so this does not repeat their execution.
+    private Emitted EmitStructureField(Value value, int index)
+    {
+        if (value.Type is not StructureType)
+            return Emit(value);
+        if ((_forceInline || !context.NeedsVariable(value)) && value is SetField update)
+        {
+            var span = update.FieldSpan;
+            return index >= span.Index && index < span.Index + span.Span
+                ? EmitStructureField(update.Value, index - span.Index)
+                : EmitStructureField(update.Source, index);
+        }
+        if ((_forceInline || !context.NeedsVariable(value)) && value is StructureValue structure)
+            return Emit(structure.Values[index]);
+        var target = Parenthesize(Emit(value), Prec.Postfix);
+        return new Emitted($"{target}.{StructureType.GetFieldName(index)}", Prec.Postfix);
+    }
 
     /// <summary>
     /// Emits a struct field access as a dot expression (e.g., "source.field_0").

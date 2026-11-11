@@ -1101,6 +1101,19 @@ partial class ModuleBuilder : IGenerationObject
         {
             var opDesc = $"{op.GetType().Name}:{op.ToReferenceString()}(gen=" +
                 $"{op.Generation})";
+            if (!op.IsSealed)
+            {
+                sb.AppendLine($"  UNSEALED in {block.ToReferenceString()}: " +
+                    $"{path} → {opDesc}");
+                if (root is BasicBlockValues.PhiValue phi)
+                {
+                    foreach (var source in phi.Sources)
+                        sb.AppendLine($"    source {source.ToReferenceString()} " +
+                            $"sealed={source.IsSealed}");
+                    foreach (var predecessor in block.Predecessors)
+                        sb.AppendLine($"    predecessor {predecessor.ToReferenceString()}");
+                }
+            }
             if (op.Generation != gen)
             {
                 sb.AppendLine($"  STALE-DEEP in {block.ToReferenceString()}: " +

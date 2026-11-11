@@ -203,12 +203,21 @@ sealed class CompiledKernelGenerator : DisposeBase
             $"new Guid(\"{_kernelGuid}\");");
         WriteLine();
 
-        // 2b. Runtime kernel cache — set once during accelerator init,
-        // accessed at zero cost per launch
-        WriteLine("private static Kernel? _runtimeKernel;");
-        WriteLine(
-            "protected override void OnKernelLoaded(Kernel kernel) " +
-            "=> _runtimeKernel = kernel;");
+        // Native kernels belong to the accelerator that loaded them.
+        // Weak keys avoid keeping disposed accelerator contexts alive.
+        WriteLine("private static readonly ConditionalWeakTable<Accelerator, Kernel> _runtimeKernels = new();");
+        WriteLine("protected override void OnKernelLoaded(Kernel kernel)");
+        WriteLine("{");
+        WriteLine("    var accelerator = kernel.Accelerator ?? throw new InvalidOperationException(\"Kernel has no accelerator.\");");
+        WriteLine("    _runtimeKernels.AddOrUpdate(accelerator, kernel);");
+        WriteLine("}");
+        WriteLine("private static Kernel GetRuntimeKernel(AcceleratorStream stream)");
+        WriteLine("{");
+        WriteLine("    if (stream.IsDisposed || stream.Accelerator is not { } accelerator || accelerator.IsDisposed ||");
+        WriteLine("        !_runtimeKernels.TryGetValue(accelerator, out var kernel) || kernel.IsDisposed)");
+        WriteLine("        throw new InvalidOperationException(\"The kernel is not loaded on this live accelerator.\");");
+        WriteLine("    return kernel;");
+        WriteLine("}");
         WriteLine();
 
         // 3. Emit fallback warning if binary was requested but not available
@@ -880,15 +889,20 @@ sealed class CompiledKernelGenerator : DisposeBase
                         // no constructor that takes ArrayView<UserStruct>,
                         // so build the (pointer, length) pair via Unsafe —
                         // mirrors EmitStructMarshalingCode's view branch.
-                        // Use .BaseView to land on the basic ArrayView<T>
-                        // form so LoadEffectiveAddress<T> can infer T;
-                        // guard against IsValid==false to avoid taking the
-                        // address of a default-initialized view.
+                        // A kernel's plain ArrayView parameter may be passed a
+                        // dense 1D view at the launch site. Normalize that
+                        // wrapper while retaining the launch view's length.
+                        var launchType = param.LaunchTypeName ?? string.Empty;
+                        var genericStart = launchType.IndexOf('<', StringComparison.Ordinal);
+                        var source = genericStart > 0 && launchType[..genericStart]
+                            .EndsWith("ArrayView1D", StringComparison.Ordinal)
+                            ? $"{param.Name}.AsContiguous()"
+                            : param.Name;
                         WriteLine(
-                            $"args.{param.Name} = {param.Name}.BaseView.IsValid" +
+                            $"args.{param.Name} = {param.Name}.IsValid" +
                             $" ? new ViewImplementation<byte>(" +
-                            $"Unsafe.AsPointer(ref {param.Name}.BaseView" +
-                            $".LoadEffectiveAddress()), {param.Name}.BaseView.Length)" +
+                            $"Unsafe.AsPointer(ref {source}" +
+                            $".LoadEffectiveAddress()), {param.Name}.Length)" +
                             $" : default(ViewImplementation<byte>);");
                     }
                     else

@@ -233,8 +233,18 @@ partial class CodeGenerator
                 return true;
 
             case ILInstructionType.Conv:
-                MakeConvert(instruction.GetArgumentAs<Type>(), instruction.Flags);
-                return true;
+                {
+                    Type targetType = instruction.Argument switch
+                    {
+                        Type type => type,
+                        DependentTypeArguments dependentTypeArguments =>
+                            dependentTypeArguments.DetermineType(
+                                Block.PeekBasicValueType(instruction.Location)),
+                        _ => instruction.GetArgumentAs<Type>(),
+                    };
+                    MakeConvert(targetType, instruction.Flags);
+                    return true;
+                }
 
             case ILInstructionType.Initobj:
                 MakeInitObject(instruction.GetArgumentAs<Type>());

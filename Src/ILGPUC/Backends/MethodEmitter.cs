@@ -584,6 +584,8 @@ sealed class MethodEmitter(
         {
             if (element is BasicBlock bb)
                 lastBlock = bb;
+            else if (element is IfStatement nested && nested.MergeBlock != null)
+                lastBlock = nested.MergeBlock;
         }
 
         // If branch is empty, the condition block transitions directly

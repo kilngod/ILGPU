@@ -40,6 +40,8 @@ sealed class MethodTransform :
     ITypeRewriter,
     ITransform
 {
+    private static readonly bool ExperimentalRelink =
+        Environment.GetEnvironmentVariable("ILGPUC_EXPERIMENTAL_RELINK") == "1";
     #region Nested Types
 
     /// <summary>
@@ -77,6 +79,7 @@ sealed class MethodTransform :
     #region Instance
 
     private readonly Dictionary<BasicBlockValue, BasicBlockValue?> _prevMapping;
+    private readonly Dictionary<BasicBlockValue, BasicBlock> _relinkDestinations;
     private readonly ValueSet<Method, BasicBlock> _rewritten;
     private readonly ValueMap<Method, BasicBlock, BasicBlock> _newToOld;
     private readonly Lazy<CFG<ReversePostOrder<BasicBlock>, Forwards>> _cfg;
@@ -111,6 +114,7 @@ sealed class MethodTransform :
             setupEntryBuilder: false)
     {
         _prevMapping = new(oldMethod.NumValues);
+        _relinkDestinations = new(oldMethod.NumValues);
         _resolvedIdentity = new(
             Generation,
             oldMethod.NumValues,
@@ -443,7 +447,7 @@ sealed class MethodTransform :
                 else if (_currentDemandBlock is not null
                     && currentGenBlock != _currentDemandBlock.BasicBlock
                     && (bbv.BasicBlock == _currentDemandBlock.OldBasicBlock
-                        || IsRelinkedChainMember(bbv)
+                        || IsRelinkedChainMember(bbv, _currentDemandBlock.BasicBlock)
                         || (_currentChainMemberIds?.Contains(bbv.Id) ?? false)))
                 {
                     // This value's OLD block matches the demand block's OLD
@@ -778,15 +782,21 @@ sealed class MethodTransform :
         ModuleTransform.Rewrite(oldValue);
 
     /// <summary>
-    /// Checks whether the given value is a relinked chain member — its
-    /// predecessor was set via <c>_prevMapping</c> by AppendTo during
-    /// SimplifyControlFlow block merging. This means the value is from
-    /// a block that was merged into another block, and its original
-    /// BasicBlock no longer matches the demand block.
+    /// Checks whether the value was relinked into the specified block.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool IsRelinkedChainMember(BasicBlockValue bbv) =>
-        _prevMapping.ContainsKey(bbv);
+    private bool IsRelinkedChainMember(BasicBlockValue bbv, BasicBlock destination) =>
+        ExperimentalRelink
+            ? _relinkDestinations.TryGetValue(bbv, out var target) && target == destination
+            : _prevMapping.ContainsKey(bbv);
+
+    private void SetRelinkDestination(BasicBlockValue first, BasicBlock destination)
+    {
+        if (!ExperimentalRelink)
+            return;
+        for (var current = first; current is not null; current = current.Next)
+            _relinkDestinations[current] = destination;
+    }
 
     /// <summary>
     /// Tries to get a relinked previous value for the given value.
@@ -817,6 +827,7 @@ sealed class MethodTransform :
 
         if (!AppendTo(block.Last, toAppend))
             block.UpdateLastFromChain(toAppend);
+        SetRelinkDestination(toAppend, block.BasicBlock);
 
         // Register every subsequent value in the moved chain in
         // _prevMapping. AppendTo semantics move the whole .Next chain;
@@ -866,6 +877,7 @@ sealed class MethodTransform :
             return false;
 
         var blockTransform = GetBasicBlockTransform(source.BasicBlock);
+        SetRelinkDestination(toAppend, blockTransform.BasicBlock);
         blockTransform.UpdateLastFromChain(toAppend);
         return true;
     }
@@ -1158,6 +1170,14 @@ sealed class MethodTransform :
     /// <returns>The new value (if any).</returns>
     void IMethodPhiRewriter.Map(PhiValue oldPhi, Value? newValue) =>
         ModuleTransform.ReplaceDirect(oldPhi, newValue);
+
+    HashSet<BasicBlock> IMethodPhiRewriter.GetReachableBlocks()
+    {
+        var result = new HashSet<BasicBlock>();
+        foreach (var block in TraverseToCollection())
+            result.Add(block);
+        return result;
+    }
 
     /// <inheritdoc/>
     void IMethodPhiRewriter.BeginPhiWiring(BasicBlock phiBlock)

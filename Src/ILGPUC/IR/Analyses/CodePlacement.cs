@@ -119,6 +119,10 @@ sealed class PlacedBlock
 /// </summary>
 sealed class CodePlacement
 {
+#if DEBUG
+    private static readonly bool ValidateDependencies =
+        Environment.GetEnvironmentVariable("ILGPUC_VALIDATE_CODE_PLACEMENT") == "1";
+#endif
     #region Nested Types
 
     /// <summary>
@@ -248,10 +252,12 @@ sealed class CodePlacement
             foreach (BasicBlockValue bbValue in block)
             {
                 // Process all operands of this basic block value
-                foreach (var operand in bbValue.Values)
+                for (int i = 0; i < bbValue.Values.Length; ++i)
                 {
+                    var operand = bbValue.Values[i];
                     if (operand is PureValue pureValue)
-                        ComputePureValuePlacement(pureValue, block);
+                        ComputePureValuePlacement(pureValue,
+                            bbValue is PhiValue phi ? phi.Sources[i] : block);
                 }
             }
 
@@ -279,8 +285,21 @@ sealed class CodePlacement
                 useBlock);
             if (newPlacement != existingPlacement)
             {
+                foreach (var operand in pureValue.Values)
+                    if (operand is PureValue child)
+                        ComputePureValuePlacement(child, newPlacement);
                 newPlacement = EnforceOperandConstraint(
                     pureValue, newPlacement, useBlock);
+                if (newPlacement != existingPlacement)
+                {
+                    _blockToPureValues[existingPlacement].Remove(pureValue);
+                    if (!_blockToPureValues.TryGetValue(newPlacement, out var newList))
+                    {
+                        newList = new List<PureValue>(4);
+                        _blockToPureValues.Add(newPlacement, newList);
+                    }
+                    newList.Add(pureValue);
+                }
                 _pureValuePlacements[pureValue] = newPlacement;
             }
             return newPlacement;
@@ -326,6 +345,11 @@ sealed class CodePlacement
 
         // Compute latest placement, constrained to not go above earliestBlock
         var placementBlock = ComputeLatestPlacement(pureValue, earliestBlock);
+
+        foreach (var operand in pureValue.Values)
+            if (operand is PureValue child)
+                ComputePureValuePlacement(child, placementBlock);
+        placementBlock = EnforceOperandConstraint(pureValue, placementBlock, useBlock);
 
         _pureValuePlacements.Add(pureValue, placementBlock);
 
@@ -582,7 +606,27 @@ sealed class CodePlacement
         foreach (var operand in pureValue.Values)
         {
             if (operand is PureValue childPure)
+            {
+#if DEBUG
+                // A definition must dominate every block that uses it.
+                if (ValidateDependencies
+                    && _pureValuePlacements.TryGetValue(childPure, out var childBlock)
+                    && !Dominators.Dominates(childBlock, block))
+                {
+                    foreach (var source in childPure.Values)
+                        if (source is BasicBlockValue bb)
+                            throw new InvalidOperationException(
+                                $"Invalid pure dependency placement in {Method}: " +
+                                $"{pureValue} in {block}, operand {childPure} in {childBlock}, " +
+                                $"source {bb} in {bb.BasicBlock}, source dominates use: " +
+                                $"{Dominators.Dominates(bb.BasicBlock, block)}");
+                    throw new InvalidOperationException(
+                        $"Invalid pure dependency placement in {Method}: {pureValue} " +
+                        $"in {block}, operand {childPure} in {childBlock}");
+                }
+#endif
                 PlacePureValue(childPure, block, placedBlock);
+            }
         }
 
         // Place the pure value itself

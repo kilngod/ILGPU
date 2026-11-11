@@ -219,6 +219,13 @@ sealed partial class Store : MemoryValue
     {
         var newTarget = rewriter.Rewrite(Target);
         var newValue = rewriter.Rewrite(Value);
+        // Address-space specialization can rewrite the stored value independently.
+        if (newTarget?.Type is PointerType { ElementType: AddressSpaceType targetType } &&
+            newValue?.Type is AddressSpaceType sourceType &&
+            targetType.GetType() == sourceType.GetType() &&
+            targetType.ElementType.Equals(sourceType.ElementType))
+            newValue = rewriter.Builder.CreateAddressSpaceCast(
+                Location, newValue, targetType.AddressSpace);
         return rewriter.Builder.CreateStore(Location, newTarget, newValue);
     }
 

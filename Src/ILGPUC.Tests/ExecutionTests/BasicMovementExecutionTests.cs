@@ -40,4 +40,26 @@ public abstract class BasicMovementExecutionTests : ExecutionTestBase
             ["Kernels.BarrierOrderingKernel"],
             ["1", "3", "5", "7"]);
     }
+
+    [SkippableFact]
+    public async Task ConditionalStructBarrier_ProducesCorrectOutput()
+    {
+        Skip.If(Backend != BackendType.ROCm,
+            "This regression exercises ROCm code placement; CPU struct lowering is separate.");
+        await VerifyProgramOutputAsync(
+            "TestPrograms/BasicMovement/ConditionalStructBarrier.cs",
+            ["Kernels.ConditionalStructBarrierKernel"],
+            ["0"]);
+    }
+
+    [SkippableFact]
+    public async Task InliningRelinkOwnership_ProducesCorrectOutput()
+    {
+        Skip.If(Backend != BackendType.ROCm,
+            "The CPU emitter currently cannot compile this kernel's array views.");
+        await VerifyProgramOutputAsync(
+            "TestPrograms/BasicMovement/InliningRelinkOwnership.cs",
+            ["Kernels.InliningRelinkOwnershipKernel"],
+            ["35", "35", "25", "27"]);
+    }
 }

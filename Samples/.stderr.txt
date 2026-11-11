@@ -1,0 +1,15 @@
+Fatal error.
+0xC0000005
+   at ILGPU.Runtime.ROCm.ROCmAPI_0.<hipModuleLoadData_Import>g____PInvoke|0_0(IntPtr*, Byte*)
+   at ILGPU.Runtime.ROCm.ROCmAPI_0.hipModuleLoadData_Import(IntPtr ByRef, Byte*)
+   at ILGPU.Runtime.ROCm.ROCmAPI_0.hipModuleLoadData(IntPtr ByRef, Byte*)
+   at ILGPU.Runtime.ROCm.ROCmAPI.ModuleLoadData(Byte*, IntPtr ByRef)
+   at ILGPU.Runtime.ROCm.ROCmKernel..ctor(ILGPU.Runtime.ROCm.ROCmAccelerator, ILGPU.Runtime.ROCm.ROCmCompiledKernel)
+   at ILGPU.Runtime.ROCm.ROCmAccelerator.LoadKernel(ILGPU.Runtime.CompiledKernel)
+   at ILGPU.Runtime.Accelerator.LoadCompiledKernel(ILGPU.Runtime.CompiledKernel)
+   at ILGPU.Runtime.Accelerator.LoadKernels()
+   at ILGPU.Runtime.Accelerator.OnAcceleratorCreated()
+   at ILGPU.Runtime.ROCm.ROCmAccelerator..ctor(ILGPU.Context, ILGPU.Runtime.ROCm.ROCmDevice)
+   at ILGPU.Runtime.ROCm.ROCmDevice.CreateROCmAccelerator(ILGPU.Context)
+   at ILGPU.Runtime.ROCm.ROCmDevice.CreateAccelerator(ILGPU.Context)
+   at AlgorithmsRadixSort.Program.Main()

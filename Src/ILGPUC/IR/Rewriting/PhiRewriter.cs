@@ -14,6 +14,7 @@ using ILGPUC.IR.BasicBlockValues;
 using ILGPUC.IR.BasicBlockValues.Construction;
 using ILGPUC.IR.MethodValues;
 using ILGPUC.IR.ModuleValues;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace ILGPUC.IR.Rewriting;
@@ -23,6 +24,8 @@ namespace ILGPUC.IR.Rewriting;
 /// </summary>
 interface IMethodPhiRewriter : IRewriter
 {
+    /// <summary>Returns the blocks reachable in the current control-flow graph.</summary>
+    HashSet<BasicBlock> GetReachableBlocks();
     /// <summary>
     /// Maps an old phi value to a new one.
     /// </summary>
@@ -97,6 +100,12 @@ struct PhiRewriter(int capacity)
     public readonly void Finish<TRewriter>(TRewriter rewriter)
         where TRewriter : IMethodPhiRewriter
     {
+        if (_phiValues.Count == 0)
+            return;
+
+        // An inlined branch can become unreachable before its merge is wired.
+        // Do not retain an input from a block outside the current CFG.
+        var reachable = rewriter.GetReachableBlocks();
         foreach (var (phiValue, phiBuilder) in _phiValues)
         {
             // Check if the old phi was superseded by a later transformation
@@ -125,13 +134,14 @@ struct PhiRewriter(int capacity)
             for (int i = 0; i < phiValue.Sources.Count; ++i)
             {
                 var source = rewriter.Rewrite(phiValue.Sources[i]);
-                var value = rewriter.Rewrite(phiValue.Arguments[i]);
+                if (source is BasicBlock unreachableSource &&
+                        reachable.Contains(phiBuilder.PhiValue.BasicBlock) &&
+                        !reachable.Contains(unreachableSource))
+                    continue;
 
-                if (source is BasicBlock newSource &&
-                    value is Value newValue)
-                {
+                var value = rewriter.Rewrite(phiValue.Arguments[i]);
+                if (source is BasicBlock newSource && value is Value newValue)
                     phiBuilder.AddArgument(newSource, newValue);
-                }
             }
             rewriter.EndPhiWiring();
 

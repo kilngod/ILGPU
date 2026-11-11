@@ -12,6 +12,7 @@
 
 // disable: max_line_length
 using ILGPUC.Backends;
+using ILGPUC.IR;
 using ILGPUC.Tests.Framework;
 using ILGPUC.Tests.Kernels;
 using Xunit;
@@ -44,6 +45,18 @@ public sealed class ConvertFloatIRTests : CompilationTestBase
     public void DoubleToFloat_AfterFrontend() =>
         VerifyAfterFrontend(GetKernel(
             typeof(ConvertFloatKernels), nameof(ConvertFloatKernels.DoubleToFloatKernel)));
+
+    [Fact]
+    public void UIntToFloat_ConvRUn_AfterFrontend() =>
+        Assert.NotEmpty(DumpIRString(GetKernel(
+            typeof(ConvertFloatKernels), nameof(ConvertFloatKernels.UIntToFloatKernel)),
+            IRDumpPoint.AfterFrontend));
+
+    [Fact]
+    public void ULongToDouble_ConvRUn_AfterFrontend() =>
+        Assert.NotEmpty(DumpIRString(GetKernel(
+            typeof(ConvertFloatKernels), nameof(ConvertFloatKernels.ULongToDoubleKernel)),
+            IRDumpPoint.AfterFrontend));
 
     // --- AfterGlobalOpt ---
 
