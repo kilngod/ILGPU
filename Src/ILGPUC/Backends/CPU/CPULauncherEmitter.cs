@@ -187,9 +187,18 @@ sealed class CPULauncherEmitter : LauncherEmitter
                 }
                 else
                 {
+                    var launchType = param.LaunchTypeName ?? string.Empty;
+                    var view = launchType.Contains("ArrayView1D<",
+                            System.StringComparison.Ordinal)
+                        || launchType.Contains("ArrayView2D<",
+                            System.StringComparison.Ordinal)
+                        || launchType.Contains("ArrayView3D<",
+                            System.StringComparison.Ordinal)
+                        ? $"{param.Name}.BaseView"
+                        : param.Name;
                     ctx.WriteLine(
                         $"var {viewVar} = CPURuntimeView<{elemType}>.FromView(" +
-                        $"{param.Name}.BaseView);");
+                        $"{view});");
                 }
                 return viewVar;
 
